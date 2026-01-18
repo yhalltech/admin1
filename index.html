@@ -91,32 +91,6 @@
             color: white;
         }
         
-        #loginScreen {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .login-card {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            padding: 40px;
-            width: 100%;
-            max-width: 400px;
-        }
-        
-        .logo {
-            font-size: 2.5rem;
-            font-weight: bold;
-            background: linear-gradient(45deg, var(--primary-color), var(--warning-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 30px;
-        }
-        
         .nav-link.active {
             background-color: rgba(255,255,255,0.1);
             border-radius: 10px;
@@ -144,36 +118,8 @@
     </style>
 </head>
 <body>
-    <!-- Login Screen -->
-    <div id="loginScreen">
-        <div class="login-card">
-            <div class="text-center">
-                <div class="logo">Kalenjin Admin</div>
-                <p class="text-muted mb-4">Payment Management System</p>
-            </div>
-            
-            <form id="loginForm">
-                <div class="mb-3">
-                    <label for="username" class="form-label">Username</label>
-                    <input type="text" class="form-control" id="username" placeholder="Enter username" required>
-                </div>
-                <div class="mb-3">
-                    <label for="password" class="form-label">Password</label>
-                    <input type="password" class="form-control" id="password" placeholder="Enter password" required>
-                </div>
-                <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-primary btn-lg">Login</button>
-                </div>
-            </form>
-            
-            <div class="mt-3 text-center">
-                <div id="loginMessage" class="text-danger"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Dashboard (Hidden until login) -->
-    <div id="dashboard" style="display: none;">
+    <!-- Main Dashboard -->
+    <div id="dashboard">
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="px-3 py-4">
@@ -582,112 +528,42 @@
         let currentAdmin = null;
         let authToken = null;
 
-        // Login function
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const messageDiv = document.getElementById('loginMessage');
-            
-            messageDiv.textContent = 'Logging in...';
-            messageDiv.className = 'text-info';
-            
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        query: `
-                            query {
-                                adminLogin(username: "${username}", password: "${password}") {
-                                    success
-                                    message
-                                    admin {
-                                        id
-                                        username
-                                        email
-                                        fullName
-                                    }
-                                    session {
-                                        token
-                                        expiresAt
-                                    }
-                                }
-                            }
-                        `
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.data.adminLogin.success) {
-                    currentAdmin = data.data.adminLogin.admin;
-                    authToken = data.data.adminLogin.session?.token;
-                    
-                    // Store in localStorage
-                    localStorage.setItem('adminToken', authToken);
-                    localStorage.setItem('adminData', JSON.stringify(currentAdmin));
-                    
-                    // Show dashboard
-                    document.getElementById('loginScreen').style.display = 'none';
-                    document.getElementById('dashboard').style.display = 'block';
-                    
-                    // Update admin info
-                    document.getElementById('adminName').textContent = currentAdmin.fullName;
-                    document.getElementById('adminRole').textContent = 'Administrator';
-                    
-                    // Load dashboard data
-                    loadDashboardData();
-                    showSection('dashboard-section');
-                    
-                    messageDiv.textContent = '';
-                } else {
-                    messageDiv.textContent = data.data.adminLogin.message || 'Login failed';
-                    messageDiv.className = 'text-danger';
-                }
-            } catch (error) {
-                messageDiv.textContent = 'Connection error. Please check if server is running.';
-                messageDiv.className = 'text-danger';
-                console.error('Login error:', error);
-            }
-        });
-
         // Check for existing session
         function checkExistingSession() {
-            const savedToken = localStorage.getItem('adminToken');
-            const savedAdmin = localStorage.getItem('adminData');
+            const savedToken = localStorage.getItem('adminToken') || sessionStorage.getItem('adminToken');
+            const savedAdmin = localStorage.getItem('adminInfo') || sessionStorage.getItem('adminInfo');
             
             if (savedToken && savedAdmin) {
                 try {
                     currentAdmin = JSON.parse(savedAdmin);
                     authToken = savedToken;
                     
-                    document.getElementById('loginScreen').style.display = 'none';
-                    document.getElementById('dashboard').style.display = 'block';
-                    document.getElementById('adminName').textContent = currentAdmin.fullName;
+                    document.getElementById('adminName').textContent = currentAdmin.fullName || currentAdmin.username;
+                    document.getElementById('adminRole').textContent = currentAdmin.role?.name || 'Administrator';
                     
                     loadDashboardData();
                     showSection('dashboard-section');
                 } catch (e) {
-                    localStorage.clear();
+                    console.error('Error parsing saved admin data:', e);
+                    redirectToLogin();
                 }
+            } else {
+                redirectToLogin();
             }
+        }
+
+        // Redirect to login page
+        function redirectToLogin() {
+            window.location.href = '/login.html';
         }
 
         // Logout function
         function logout() {
             localStorage.clear();
+            sessionStorage.clear();
             currentAdmin = null;
             authToken = null;
-            
-            document.getElementById('dashboard').style.display = 'none';
-            document.getElementById('loginScreen').style.display = 'flex';
-            document.getElementById('username').value = '';
-            document.getElementById('password').value = '';
-            document.getElementById('loginMessage').textContent = '';
+            redirectToLogin();
         }
 
         // Show section
