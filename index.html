@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalenjin Admin - Payment Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --secondary-color: #3a0ca3;
+            --success-color: #4cc9f0;
+            --warning-color: #f72585;
+            --danger-color: #7209b7;
+            --light-bg: #f8f9fa;
+            --dark-bg: #212529;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fb;
+            color: #333;
+        }
+        
+        .sidebar {
+            background: linear-gradient(180deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            height: 100vh;
+            position: fixed;
+            width: 250px;
+            padding-top: 20px;
+        }
+        
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+        
+        .stat-card {
+            border-radius: 15px;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .payment-card {
+            border-left: 4px solid var(--primary-color);
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .payment-card.pending {
+            border-left-color: #ffc107;
+        }
+        
+        .payment-card.verified {
+            border-left-color: #28a745;
+        }
+        
+        .payment-card.rejected {
+            border-left-color: #dc3545;
+        }
+        
+        .btn-verify {
+            background: linear-gradient(45deg, var(--success-color), #4895ef);
+            border: none;
+            color: white;
+        }
+        
+        .btn-reject {
+            background: linear-gradient(45deg, var(--warning-color), var(--danger-color));
+            border: none;
+            color: white;
+        }
+        
+        .transaction-code {
+            font-family: 'Courier New', monospace;
+            background: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .modal-header {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            color: white;
+        }
+        
+        #loginScreen {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: linear-gradient(45deg, var(--primary-color), var(--warning-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+        }
+        
+        .nav-link.active {
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            margin: 5px 10px;
+        }
+        
+        .nav-link:hover {
+            background-color: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            margin: 5px 10px;
+        }
+        
+        .badge-pending {
+            background-color: #ffc107;
+            color: #000;
+        }
+        
+        .badge-verified {
+            background-color: #28a745;
+        }
+        
+        .badge-rejected {
+            background-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen">
+        <div class="login-card">
+            <div class="text-center">
+                <div class="logo">Kalenjin Admin</div>
+                <p class="text-muted mb-4">Payment Management System</p>
+            </div>
+            
+            <form id="loginForm">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" class="form-control" id="username" placeholder="Enter username" required>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" placeholder="Enter password" required>
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg">Login</button>
+                </div>
+            </form>
+            
+            <div class="mt-3 text-center">
+                <div id="loginMessage" class="text-danger"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard (Hidden until login) -->
+    <div id="dashboard" style="display: none;">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="px-3 py-4">
+                <h3 class="mb-4">
+                    <i class="bi bi-shield-check"></i> Kalenjin Admin
+                </h3>
+                <div class="d-flex align-items-center mb-4">
+                    <div class="bg-light rounded-circle p-2 me-3">
+                        <i class="bi bi-person-circle text-primary"></i>
+                    </div>
+                    <div>
+                        <h6 class="mb-0" id="adminName">Loading...</h6>
+                        <small id="adminRole">Administrator</small>
+                    </div>
+                </div>
+                
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link active text-white" href="#" onclick="showSection('dashboard-section')">
+                            <i class="bi bi-speedometer2 me-2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-white" href="#" onclick="showSection('payments-section')">
+                            <i class="bi bi-credit-card me-2"></i> Payments
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-white" href="#" onclick="showSection('verification-section')">
+                            <i class="bi bi-check-circle me-2"></i> Verification
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-white" href="#" onclick="showSection('transactions-section')">
+                            <i class="bi bi-arrow-left-right me-2"></i> Transactions
+                        </a>
+                    </li>
+                    <li class="nav-item mt-4">
+                        <a class="nav-link text-white" href="#" onclick="logout()">
+                            <i class="bi bi-box-arrow-right me-2"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Dashboard Section -->
+            <div id="dashboard-section">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-speedometer2 me-2"></i> Dashboard Overview</h2>
+                    <div class="text-muted" id="currentDate"></div>
+                </div>
+                
+                <!-- Stats Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="text-muted">Total Revenue</h6>
+                                        <h3 id="totalRevenue">KES 0</h3>
+                                    </div>
+                                    <div class="bg-primary rounded-circle p-3">
+                                        <i class="bi bi-currency-exchange text-white fs-4"></i>
+                                    </div>
+                                </div>
+                                <small class="text-success" id="revenueGrowth">+0% from last month</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="text-muted">Pending Payments</h6>
+                                        <h3 id="pendingPayments">0</h3>
+                                    </div>
+                                    <div class="bg-warning rounded-circle p-3">
+                                        <i class="bi bi-clock-history text-white fs-4"></i>
+                                    </div>
+                                </div>
+                                <small class="text-danger" id="pendingChange">0 awaiting verification</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="text-muted">Verified Today</h6>
+                                        <h3 id="verifiedToday">0</h3>
+                                    </div>
+                                    <div class="bg-success rounded-circle p-3">
+                                        <i class="bi bi-check-circle text-white fs-4"></i>
+                                    </div>
+                                </div>
+                                <small class="text-success" id="verificationRate">0% success rate</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card stat-card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <h6 class="text-muted">Total Users</h6>
+                                        <h3 id="totalUsers">0</h3>
+                                    </div>
+                                    <div class="bg-info rounded-circle p-3">
+                                        <i class="bi bi-people text-white fs-4"></i>
+                                    </div>
+                                </div>
+                                <small class="text-success" id="userGrowth">+0 new today</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Payments -->
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><i class="bi bi-credit-card me-2"></i> Recent Payments</h5>
+                                <button class="btn btn-sm btn-primary" onclick="showSection('payments-section')">
+                                    View All <i class="bi bi-arrow-right"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div id="recentPayments">
+                                    <div class="text-center py-5">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-3">Loading payments...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0"><i class="bi bi-activity me-2"></i> Quick Actions</h5>
+                            </div>
+                            <div class="card-body">
+                                <button class="btn btn-verify w-100 mb-3" onclick="showVerificationModal()">
+                                    <i class="bi bi-check-circle me-2"></i> Verify Payment
+                                </button>
+                                <button class="btn btn-reject w-100 mb-3" onclick="showRejectionModal()">
+                                    <i class="bi bi-x-circle me-2"></i> Reject Payment
+                                </button>
+                                <button class="btn btn-outline-primary w-100 mb-3" onclick="showSection('transactions-section')">
+                                    <i class="bi bi-plus-circle me-2"></i> Add Transaction
+                                </button>
+                                <button class="btn btn-outline-secondary w-100" onclick="refreshData()">
+                                    <i class="bi bi-arrow-clockwise me-2"></i> Refresh Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payments Section -->
+            <div id="payments-section" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-credit-card me-2"></i> All Payments</h2>
+                    <div>
+                        <select class="form-select d-inline-block w-auto me-2" id="filterStatus" onchange="loadPayments()">
+                            <option value="">All Status</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="VERIFIED">Verified</option>
+                            <option value="REJECTED">Rejected</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="refreshData()">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Ticket No.</th>
+                                        <th>Customer</th>
+                                        <th>Amount</th>
+                                        <th>Method</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="paymentsTable">
+                                    <!-- Payments will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div id="paymentPagination"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Verification Section -->
+            <div id="verification-section" style="display: none;">
+                <h2 class="mb-4"><i class="bi bi-check-circle me-2"></i> Payment Verification</h2>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-warning text-white">
+                                <h5 class="mb-0">Pending Verification</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="pendingVerifications">
+                                    <!-- Pending payments will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">Recently Verified</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="recentVerifications">
+                                    <!-- Verified payments will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transactions Section -->
+            <div id="transactions-section" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-arrow-left-right me-2"></i> Transaction Management</h2>
+                    <button class="btn btn-primary" onclick="showAddTransactionModal()">
+                        <i class="bi bi-plus-circle me-2"></i> Add Transaction
+                    </button>
+                </div>
+                
+                <div class="card">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="searchTransaction" placeholder="Search by ticket number or name...">
+                                <button class="btn btn-outline-primary" onclick="searchTransactions()">
+                                    <i class="bi bi-search"></i> Search
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="transactionsList">
+                            <!-- Transactions will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    
+    <!-- Verify Payment Modal -->
+    <div class="modal fade" id="verifyModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Verify Payment</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Payment Ticket Number</label>
+                        <input type="text" class="form-control" id="verifyTicketNumber" placeholder="Enter ticket number">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Transaction Code</label>
+                        <input type="text" class="form-control" id="verifyTransactionCode" 
+                               placeholder="e.g., JOHNDOE123456">
+                        <small class="text-muted">Format: FirstName + TicketNumber (e.g., JOHNDOE123456)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="verifyNotes" rows="3" placeholder="Add verification notes..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-verify" onclick="verifyPayment()">Verify Payment</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reject Payment Modal -->
+    <div class="modal fade" id="rejectModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Reject Payment</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Payment Ticket Number</label>
+                        <input type="text" class="form-control" id="rejectTicketNumber" placeholder="Enter ticket number">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reason for Rejection</label>
+                        <select class="form-select" id="rejectReason">
+                            <option value="">Select reason</option>
+                            <option value="INSUFFICIENT_FUNDS">Insufficient Funds</option>
+                            <option value="FRAUDULENT">Fraudulent Transaction</option>
+                            <option value="INCORRECT_AMOUNT">Incorrect Amount</option>
+                            <option value="DUPLICATE">Duplicate Payment</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Details</label>
+                        <textarea class="form-control" id="rejectDetails" rows="3" placeholder="Provide details..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-reject" onclick="rejectPayment()">Reject Payment</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Transaction Modal -->
+    <div class="modal fade" id="addTransactionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Transaction</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Customer Name</label>
+                        <input type="text" class="form-control" id="customerName" placeholder="Enter customer name">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ticket Number</label>
+                        <input type="text" class="form-control" id="newTicketNumber" placeholder="Enter ticket number">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Transaction Code</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="newTransactionCode" 
+                                   placeholder="Auto-generated">
+                            <button class="btn btn-outline-secondary" type="button" onclick="generateTransactionCode()">
+                                <i class="bi bi-arrow-clockwise"></i> Generate
+                            </button>
+                        </div>
+                        <small class="text-muted">Format: FirstNameUppercase + TicketNumber</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Amount (KES)</label>
+                        <input type="number" class="form-control" id="transactionAmount" placeholder="0.00">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Payment Method</label>
+                        <select class="form-select" id="transactionMethod">
+                            <option value="MPESA">M-Pesa</option>
+                            <option value="PAYBILL">PayBill</option>
+                            <option value="CARD">Card</option>
+                            <option value="BANK_TRANSFER">Bank Transfer</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="addTransaction()">Add Transaction</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuration
+        const API_URL = 'http://localhost:4000/graphql';
+        let currentAdmin = null;
+        let authToken = null;
+
+        // Login function
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const messageDiv = document.getElementById('loginMessage');
+            
+            messageDiv.textContent = 'Logging in...';
+            messageDiv.className = 'text-info';
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: `
+                            query {
+                                adminLogin(username: "${username}", password: "${password}") {
+                                    success
+                                    message
+                                    admin {
+                                        id
+                                        username
+                                        email
+                                        fullName
+                                    }
+                                    session {
+                                        token
+                                        expiresAt
+                                    }
+                                }
+                            }
+                        `
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.data.adminLogin.success) {
+                    currentAdmin = data.data.adminLogin.admin;
+                    authToken = data.data.adminLogin.session?.token;
+                    
+                    // Store in localStorage
+                    localStorage.setItem('adminToken', authToken);
+                    localStorage.setItem('adminData', JSON.stringify(currentAdmin));
+                    
+                    // Show dashboard
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+                    
+                    // Update admin info
+                    document.getElementById('adminName').textContent = currentAdmin.fullName;
+                    document.getElementById('adminRole').textContent = 'Administrator';
+                    
+                    // Load dashboard data
+                    loadDashboardData();
+                    showSection('dashboard-section');
+                    
+                    messageDiv.textContent = '';
+                } else {
+                    messageDiv.textContent = data.data.adminLogin.message || 'Login failed';
+                    messageDiv.className = 'text-danger';
+                }
+            } catch (error) {
+                messageDiv.textContent = 'Connection error. Please check if server is running.';
+                messageDiv.className = 'text-danger';
+                console.error('Login error:', error);
+            }
+        });
+
+        // Check for existing session
+        function checkExistingSession() {
+            const savedToken = localStorage.getItem('adminToken');
+            const savedAdmin = localStorage.getItem('adminData');
+            
+            if (savedToken && savedAdmin) {
+                try {
+                    currentAdmin = JSON.parse(savedAdmin);
+                    authToken = savedToken;
+                    
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+                    document.getElementById('adminName').textContent = currentAdmin.fullName;
+                    
+                    loadDashboardData();
+                    showSection('dashboard-section');
+                } catch (e) {
+                    localStorage.clear();
+                }
+            }
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.clear();
+            currentAdmin = null;
+            authToken = null;
+            
+            document.getElementById('dashboard').style.display = 'none';
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('loginMessage').textContent = '';
+        }
+
+        // Show section
+        function showSection(sectionId) {
+            // Hide all sections
+            document.getElementById('dashboard-section').style.display = 'none';
+            document.getElementById('payments-section').style.display = 'none';
+            document.getElementById('verification-section').style.display = 'none';
+            document.getElementById('transactions-section').style.display = 'none';
+            
+            // Show selected section
+            document.getElementById(sectionId).style.display = 'block';
+            
+            // Load data for the section
+            if (sectionId === 'payments-section') {
+                loadPayments();
+            } else if (sectionId === 'verification-section') {
+                loadVerifications();
+            } else if (sectionId === 'transactions-section') {
+                loadTransactions();
+            } else if (sectionId === 'dashboard-section') {
+                loadDashboardData();
+            }
+        }
+
+        // Load dashboard data
+        async function loadDashboardData() {
+            try {
+                // Update date
+                const now = new Date();
+                document.getElementById('currentDate').textContent = now.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                // Fetch dashboard stats
+                const statsResponse = await fetchGraphQL(`
+                    query {
+                        getDashboardStats(period: "today") {
+                            totalRevenue
+                            totalTransactions
+                            totalUsers
+                            totalPayments
+                            pendingVerifications
+                            pendingRefunds
+                            openReports
+                            activeAdmins
+                            revenueGrowth
+                            userGrowth
+                            conversionRate
+                        }
+                    }
+                `);
+                
+                if (statsResponse.data?.getDashboardStats) {
+                    const stats = statsResponse.data.getDashboardStats;
+                    
+                    document.getElementById('totalRevenue').textContent = `KES ${stats.totalRevenue.toLocaleString()}`;
+                    document.getElementById('pendingPayments').textContent = stats.pendingVerifications;
+                    document.getElementById('totalUsers').textContent = stats.totalUsers.toLocaleString();
+                    document.getElementById('verifiedToday').textContent = stats.totalPayments;
+                    
+                    document.getElementById('revenueGrowth').textContent = `+${stats.revenueGrowth}% from last month`;
+                    document.getElementById('userGrowth').textContent = `+${stats.userGrowth} new today`;
+                    document.getElementById('pendingChange').textContent = `${stats.pendingVerifications} awaiting verification`;
+                    document.getElementById('verificationRate').textContent = `${stats.conversionRate}% success rate`;
+                }
+                
+                // Fetch recent payments
+                const paymentsResponse = await fetchGraphQL(`
+                    query {
+                        getRecentPayments(limit: 5) {
+                            id
+                            ticketNumber
+                            customer {
+                                name
+                                email
+                            }
+                            amount
+                            method
+                            status
+                            paymentDate
+                        }
+                    }
+                `);
+                
+                if (paymentsResponse.data?.getRecentPayments) {
+                    displayRecentPayments(paymentsResponse.data.getRecentPayments);
+                }
+                
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                // Use mock data if API fails
+                useMockData();
+            }
+        }
+
+        // Fetch GraphQL with auth
+        async function fetchGraphQL(query) {
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ query })
+                });
+                
+                return await response.json();
+            } catch (error) {
+                console.error('GraphQL error:', error);
+                throw error;
+            }
+        }
+
+        // Display recent payments
+        function displayRecentPayments(payments) {
+            const container = document.getElementById('recentPayments');
+            
+            if (!payments || payments.length === 0) {
+                container.innerHTML = '<div class="text-center py-5 text-muted">No recent payments found.</div>';
+                return;
+            }
+            
+            let html = '';
+            payments.forEach(payment => {
+                const statusClass = payment.status === 'VERIFIED' ? 'verified' : 
+                                   payment.status === 'REJECTED' ? 'rejected' : 'pending';
+                
+                html += `
+                    <div class="payment-card ${statusClass} p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1">${payment.ticketNumber}</h6>
+                                <small class="text-muted">${payment.customer?.name || 'Unknown Customer'}</small>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="mb-1">KES ${payment.amount.toLocaleString()}</h6>
+                                <span class="badge bg-${payment.status === 'VERIFIED' ? 'success' : 
+                                                  payment.status === 'REJECTED' ? 'danger' : 'warning'}">
+                                    ${payment.status}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                            <small><i class="bi bi-${payment.method === 'MPESA' ? 'phone' : 'credit-card'} me-1"></i> ${payment.method}</small>
+                            <small>${new Date(payment.paymentDate).toLocaleDateString()}</small>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // Load payments for payments section
+        async function loadPayments() {
+            const statusFilter = document.getElementById('filterStatus').value;
+            
+            try {
+                const response = await fetchGraphQL(`
+                    query {
+                        getPayments(status: ${statusFilter ? `"${statusFilter}"` : null}, limit: 20) {
+                            payments {
+                                id
+                                ticketNumber
+                                customer {
+                                    name
+                                    email
+                                }
+                                amount
+                                method
+                                status
+                                transactionCode
+                                paymentDate
+                            }
+                            total
+                            page
+                            limit
+                        }
+                    }
+                `);
+                
+                if (response.data?.getPayments) {
+                    displayPaymentsTable(response.data.getPayments.payments);
+                }
+            } catch (error) {
+                console.error('Error loading payments:', error);
+                // Show mock data
+                displayPaymentsTable(getMockPayments());
+            }
+        }
+
+        // Display payments in table
+        function displayPaymentsTable(payments) {
+            const tbody = document.getElementById('paymentsTable');
+            
+            if (!payments || payments.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">
+                            No payments found.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            let html = '';
+            payments.forEach(payment => {
+                html += `
+                    <tr>
+                        <td><strong>${payment.ticketNumber}</strong></td>
+                        <td>
+                            <div>${payment.customer?.name || 'N/A'}</div>
+                            <small class="text-muted">${payment.customer?.email || ''}</small>
+                        </td>
+                        <td>KES ${payment.amount.toLocaleString()}</td>
+                        <td>
+                            <span class="badge bg-info">${payment.method}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${payment.status === 'VERIFIED' ? 'bg-success' : 
+                                            payment.status === 'REJECTED' ? 'bg-danger' : 'bg-warning'}">
+                                ${payment.status}
+                            </span>
+                        </td>
+                        <td>${new Date(payment.paymentDate).toLocaleDateString()}</td>
+                        <td>
+                            ${payment.status === 'PENDING' ? `
+                                <button class="btn btn-sm btn-success me-1" onclick="quickVerify('${payment.ticketNumber}')">
+                                    <i class="bi bi-check"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="quickReject('${payment.ticketNumber}')">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            ` : `
+                                <span class="text-muted">Verified</span>
+                            `}
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+        }
+
+        // Quick verify
+        function quickVerify(ticketNumber) {
+            document.getElementById('verifyTicketNumber').value = ticketNumber;
+            
+            // Extract first name from customer name (mock)
+            const firstName = ticketNumber.startsWith('CUST') ? 'JOHN' : 'MARY';
+            document.getElementById('verifyTransactionCode').value = firstName + ticketNumber.substring(4);
+            
+            const modal = new bootstrap.Modal(document.getElementById('verifyModal'));
+            modal.show();
+        }
+
+        // Quick reject
+        function quickReject(ticketNumber) {
+            document.getElementById('rejectTicketNumber').value = ticketNumber;
+            const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+            modal.show();
+        }
+
+        // Verify payment
+        async function verifyPayment() {
+            const ticketNumber = document.getElementById('verifyTicketNumber').value;
+            const transactionCode = document.getElementById('verifyTransactionCode').value;
+            const notes = document.getElementById('verifyNotes').value;
+            
+            if (!ticketNumber || !transactionCode) {
+                alert('Please fill in all required fields');
+                return;
+            }
+            
+            try {
+                const response = await fetchGraphQL(`
+                    mutation {
+                        verifyPayment(paymentId: "${ticketNumber}", notes: "${notes || ''}") {
+                            success
+                            message
+                            payment {
+                                ticketNumber
+                                status
+                            }
+                        }
+                    }
+                `);
+                
+                if (response.data?.verifyPayment.success) {
+                    alert('Payment verified successfully!');
+                    bootstrap.Modal.getInstance(document.getElementById('verifyModal')).hide();
+                    refreshData();
+                } else {
+                    alert(response.data?.verifyPayment.message || 'Verification failed');
+                }
+            } catch (error) {
+                alert('Error verifying payment. Using mock success for demo.');
+                // For demo purposes, show success
+                alert('Payment verified successfully! (Demo)');
+                bootstrap.Modal.getInstance(document.getElementById('verifyModal')).hide();
+                refreshData();
+            }
+        }
+
+        // Reject payment
+        async function rejectPayment() {
+            const ticketNumber = document.getElementById('rejectTicketNumber').value;
+            const reason = document.getElementById('rejectReason').value;
+            const details = document.getElementById('rejectDetails').value;
+            
+            if (!ticketNumber || !reason) {
+                alert('Please fill in all required fields');
+                return;
+            }
+            
+            try {
+                const response = await fetchGraphQL(`
+                    mutation {
+                        rejectPayment(paymentId: "${ticketNumber}", reason: "${reason}", details: "${details || ''}") {
+                            success
+                            message
+                            payment {
+                                ticketNumber
+                                status
+                            }
+                        }
+                    }
+                `);
+                
+                if (response.data?.rejectPayment.success) {
+                    alert('Payment rejected successfully!');
+                    bootstrap.Modal.getInstance(document.getElementById('rejectModal')).hide();
+                    refreshData();
+                } else {
+                    alert(response.data?.rejectPayment.message || 'Rejection failed');
+                }
+            } catch (error) {
+                alert('Error rejecting payment. Using mock success for demo.');
+                alert('Payment rejected successfully! (Demo)');
+                bootstrap.Modal.getInstance(document.getElementById('rejectModal')).hide();
+                refreshData();
+            }
+        }
+
+        // Show verification modal
+        function showVerificationModal() {
+            document.getElementById('verifyTicketNumber').value = '';
+            document.getElementById('verifyTransactionCode').value = '';
+            document.getElementById('verifyNotes').value = '';
+            
+            const modal = new bootstrap.Modal(document.getElementById('verifyModal'));
+            modal.show();
+        }
+
+        // Show rejection modal
+        function showRejectionModal() {
+            document.getElementById('rejectTicketNumber').value = '';
+            document.getElementById('rejectReason').value = '';
+            document.getElementById('rejectDetails').value = '';
+            
+            const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+            modal.show();
+        }
+
+        // Show add transaction modal
+        function showAddTransactionModal() {
+            document.getElementById('customerName').value = '';
+            document.getElementById('newTicketNumber').value = '';
+            document.getElementById('newTransactionCode').value = '';
+            document.getElementById('transactionAmount').value = '';
+            document.getElementById('transactionMethod').value = 'MPESA';
+            
+            const modal = new bootstrap.Modal(document.getElementById('addTransactionModal'));
+            modal.show();
+        }
+
+        // Generate transaction code
+        function generateTransactionCode() {
+            const customerName = document.getElementById('customerName').value;
+            const ticketNumber = document.getElementById('newTicketNumber').value;
+            
+            if (!customerName || !ticketNumber) {
+                alert('Please enter customer name and ticket number first');
+                return;
+            }
+            
+            // Extract first name and convert to uppercase
+            const firstName = customerName.split(' ')[0].toUpperCase().replace(/[^A-Z]/g, '');
+            const transactionCode = firstName + ticketNumber.replace(/[^0-9]/g, '');
+            
+            document.getElementById('newTransactionCode').value = transactionCode;
+        }
+
+        // Add transaction
+        async function addTransaction() {
+            const customerName = document.getElementById('customerName').value;
+            const ticketNumber = document.getElementById('newTicketNumber').value;
+            const transactionCode = document.getElementById('newTransactionCode').value;
+            const amount = document.getElementById('transactionAmount').value;
+            const method = document.getElementById('transactionMethod').value;
+            
+            if (!customerName || !ticketNumber || !transactionCode || !amount) {
+                alert('Please fill in all required fields');
+                return;
+            }
+            
+            try {
+                const response = await fetchGraphQL(`
+                    mutation {
+                        createTransaction(input: {
+                            type: PAYMENT
+                            amount: ${parseFloat(amount)}
+                            customerId: "1"
+                            description: "Manual entry for ${customerName}"
+                            reference: "${ticketNumber}"
+                            status: COMPLETED
+                        }) {
+                            success
+                            message
+                            transaction {
+                                id
+                                amount
+                                description
+                            }
+                        }
+                    }
+                `);
+                
+                if (response.data?.createTransaction.success) {
+                    alert('Transaction added successfully!');
+                    bootstrap.Modal.getInstance(document.getElementById('addTransactionModal')).hide();
+                    
+                    // Also create payment record
+                    alert('Payment record created with code: ' + transactionCode);
+                    refreshData();
+                }
+            } catch (error) {
+                alert('Error adding transaction. Using mock success for demo.');
+                alert(`Transaction added successfully! (Demo)
+                
+                Ticket: ${ticketNumber}
+                Customer: ${customerName}
+                Amount: KES ${amount}
+                Transaction Code: ${transactionCode}`);
+                
+                bootstrap.Modal.getInstance(document.getElementById('addTransactionModal')).hide();
+                refreshData();
+            }
+        }
+
+        // Load verifications
+        async function loadVerifications() {
+            try {
+                // Pending verifications
+                const pendingResponse = await fetchGraphQL(`
+                    query {
+                        getPaymentVerifications(status: PENDING) {
+                            id
+                            payment {
+                                ticketNumber
+                                customer {
+                                    name
+                                }
+                                amount
+                            }
+                            status
+                            createdAt
+                        }
+                    }
+                `);
+                
+                if (pendingResponse.data?.getPaymentVerifications) {
+                    displayPendingVerifications(pendingResponse.data.getPaymentVerifications);
+                }
+                
+                // Recent verifications
+                const recentResponse = await fetchGraphQL(`
+                    query {
+                        getPaymentVerifications(status: VERIFIED) {
+                            id
+                            payment {
+                                ticketNumber
+                                customer {
+                                    name
+                                }
+                                amount
+                            }
+                            status
+                            verifiedAt
+                            verifiedBy {
+                                username
+                            }
+                        }
+                    }
+                `);
+                
+                if (recentResponse.data?.getPaymentVerifications) {
+                    displayRecentVerifications(recentResponse.data.getPaymentVerifications.slice(0, 5));
+                }
+                
+            } catch (error) {
+                console.error('Error loading verifications:', error);
+                // Use mock data
+                displayPendingVerifications(getMockPendingVerifications());
+                displayRecentVerifications(getMockRecentVerifications());
+            }
+        }
+
+        // Display pending verifications
+        function displayPendingVerifications(verifications) {
+            const container = document.getElementById('pendingVerifications');
+            
+            if (!verifications || verifications.length === 0) {
+                container.innerHTML = '<div class="text-center py-4 text-muted">No pending verifications.</div>';
+                return;
+            }
+            
+            let html = '';
+            verifications.forEach(verification => {
+                html += `
+                    <div class="payment-card pending p-3 mb-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="mb-1">${verification.payment.ticketNumber}</h6>
+                                <p class="mb-1">${verification.payment.customer?.name || 'Unknown'}</p>
+                                <h5 class="text-warning mb-0">KES ${verification.payment.amount.toLocaleString()}</h5>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-success me-1" onclick="quickVerify('${verification.payment.ticketNumber}')">
+                                    <i class="bi bi-check"></i> Verify
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="quickReject('${verification.payment.ticketNumber}')">
+                                    <i class="bi bi-x"></i> Reject
+                                </button>
+                            </div>
+                        </div>
+                        <small class="text-muted">Submitted: ${new Date(verification.createdAt).toLocaleDateString()}</small>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // Display recent verifications
+        function displayRecentVerifications(verifications) {
+            const container = document.getElementById('recentVerifications');
+            
+            if (!verifications || verifications.length === 0) {
+                container.innerHTML = '<div class="text-center py-4 text-muted">No recent verifications.</div>';
+                return;
+            }
+            
+            let html = '';
+            verifications.forEach(verification => {
+                html += `
+                    <div class="border-bottom pb-3 mb-3">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <strong>${verification.payment.ticketNumber}</strong>
+                                <div class="text-muted">${verification.payment.customer?.name || 'Unknown'}</div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-success">VERIFIED</span>
+                                <div class="text-muted small">KES ${verification.payment.amount.toLocaleString()}</div>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1">
+                            Verified by: ${verification.verifiedBy?.username || 'System'} • 
+                            ${new Date(verification.verifiedAt).toLocaleDateString()}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // Load transactions
+        async function loadTransactions() {
+            try {
+                const response = await fetchGraphQL(`
+                    query {
+                        getTransactions(limit: 20) {
+                            transactions {
+                                id
+                                type
+                                amount
+                                status
+                                description
+                                reference
+                                customer {
+                                    name
+                                }
+                                createdAt
+                            }
+                        }
+                    }
+                `);
+                
+                if (response.data?.getTransactions) {
+                    displayTransactions(response.data.getTransactions.transactions);
+                }
+            } catch (error) {
+                console.error('Error loading transactions:', error);
+                displayTransactions(getMockTransactions());
+            }
+        }
+
+        // Display transactions
+        function displayTransactions(transactions) {
+            const container = document.getElementById('transactionsList');
+            
+            if (!transactions || transactions.length === 0) {
+                container.innerHTML = '<div class="text-center py-4 text-muted">No transactions found.</div>';
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr>' +
+                       '<th>Reference</th><th>Customer</th><th>Amount</th><th>Type</th><th>Status</th><th>Date</th></tr></thead><tbody>';
+            
+            transactions.forEach(transaction => {
+                html += `
+                    <tr>
+                        <td><strong>${transaction.reference || 'N/A'}</strong></td>
+                        <td>${transaction.customer?.name || 'Unknown'}</td>
+                        <td>KES ${transaction.amount.toLocaleString()}</td>
+                        <td><span class="badge bg-info">${transaction.type}</span></td>
+                        <td><span class="badge ${transaction.status === 'COMPLETED' ? 'bg-success' : 'bg-warning'}">${transaction.status}</span></td>
+                        <td>${new Date(transaction.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+
+        // Search transactions
+        function searchTransactions() {
+            const searchTerm = document.getElementById('searchTransaction').value.toLowerCase();
+            const rows = document.querySelectorAll('#transactionsList tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        }
+
+        // Refresh all data
+        function refreshData() {
+            if (document.getElementById('dashboard-section').style.display !== 'none') {
+                loadDashboardData();
+            } else if (document.getElementById('payments-section').style.display !== 'none') {
+                loadPayments();
+            } else if (document.getElementById('verification-section').style.display !== 'none') {
+                loadVerifications();
+            } else if (document.getElementById('transactions-section').style.display !== 'none') {
+                loadTransactions();
+            }
+        }
+
+        // Mock data functions (for demo when API is not available)
+        function useMockData() {
+            document.getElementById('totalRevenue').textContent = 'KES 245,800';
+            document.getElementById('pendingPayments').textContent = '12';
+            document.getElementById('verifiedToday').textContent = '8';
+            document.getElementById('totalUsers').textContent = '1,245';
+            
+            document.getElementById('revenueGrowth').textContent = '+12% from last month';
+            document.getElementById('userGrowth').textContent = '+23 new today';
+            document.getElementById('pendingChange').textContent = '12 awaiting verification';
+            document.getElementById('verificationRate').textContent = '85% success rate';
+            
+            displayRecentPayments(getMockPayments().slice(0, 5));
+        }
+
+        function getMockPayments() {
+            return [
+                { id: 1, ticketNumber: 'TKT001234', customer: { name: 'John Doe', email: 'john@example.com' }, amount: 5000, method: 'MPESA', status: 'PENDING', paymentDate: new Date().toISOString() },
+                { id: 2, ticketNumber: 'TKT001235', customer: { name: 'Jane Smith', email: 'jane@example.com' }, amount: 7500, method: 'PAYBILL', status: 'VERIFIED', transactionCode: 'JANE235', paymentDate: new Date(Date.now() - 86400000).toISOString() },
+                { id: 3, ticketNumber: 'TKT001236', customer: { name: 'Robert Johnson', email: 'robert@example.com' }, amount: 12000, method: 'CARD', status: 'REJECTED', paymentDate: new Date(Date.now() - 172800000).toISOString() },
+                { id: 4, ticketNumber: 'TKT001237', customer: { name: 'Mary Williams', email: 'mary@example.com' }, amount: 3000, method: 'MPESA', status: 'PENDING', paymentDate: new Date().toISOString() },
+                { id: 5, ticketNumber: 'TKT001238', customer: { name: 'Michael Brown', email: 'michael@example.com' }, amount: 8500, method: 'BANK_TRANSFER', status: 'VERIFIED', transactionCode: 'MICHAEL238', paymentDate: new Date(Date.now() - 43200000).toISOString() }
+            ];
+        }
+
+        function getMockPendingVerifications() {
+            return [
+                { id: 1, payment: { ticketNumber: 'TKT001234', customer: { name: 'John Doe' }, amount: 5000 }, status: 'PENDING', createdAt: new Date().toISOString() },
+                { id: 2, payment: { ticketNumber: 'TKT001237', customer: { name: 'Mary Williams' }, amount: 3000 }, status: 'PENDING', createdAt: new Date().toISOString() }
+            ];
+        }
+
+        function getMockRecentVerifications() {
+            return [
+                { id: 1, payment: { ticketNumber: 'TKT001235', customer: { name: 'Jane Smith' }, amount: 7500 }, status: 'VERIFIED', verifiedAt: new Date().toISOString(), verifiedBy: { username: 'admin' } },
+                { id: 2, payment: { ticketNumber: 'TKT001238', customer: { name: 'Michael Brown' }, amount: 8500 }, status: 'VERIFIED', verifiedAt: new Date(Date.now() - 3600000).toISOString(), verifiedBy: { username: 'admin' } }
+            ];
+        }
+
+        function getMockTransactions() {
+            return [
+                { id: 1, type: 'PAYMENT', amount: 5000, status: 'COMPLETED', description: 'Event Ticket Purchase', reference: 'TKT001234', customer: { name: 'John Doe' }, createdAt: new Date().toISOString() },
+                { id: 2, type: 'PAYMENT', amount: 7500, status: 'COMPLETED', description: 'Talent Booking', reference: 'TKT001235', customer: { name: 'Jane Smith' }, createdAt: new Date(Date.now() - 86400000).toISOString() },
+                { id: 3, type: 'REFUND', amount: 12000, status: 'COMPLETED', description: 'Event Cancellation', reference: 'REF001236', customer: { name: 'Robert Johnson' }, createdAt: new Date(Date.now() - 172800000).toISOString() }
+            ];
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkExistingSession();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(refreshData, 30000);
+        });
+    </script>
+</body>
+</html>
