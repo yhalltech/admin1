@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin Dashboard | Kalenjin Vibes</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        
+        .glass-card {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
+        ::-webkit-scrollbar-thumb { background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white">
+    
+    <!-- Mobile Menu Backdrop -->
+    <div id="mobileBackdrop" class="hidden fixed inset-0 bg-black/50 z-40 lg:hidden" onclick="toggleMobileMenu()"></div>
+    
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-slate-800 border-r border-slate-700 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-300">
+        <div class="flex flex-col h-full">
+            <!-- Logo -->
+            <div class="p-6 border-b border-slate-700">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                        <i class="fas fa-crown text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg">Kalenjin Vibes</h1>
+                        <p class="text-xs text-slate-400">Super Admin</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Navigation -->
+            <nav class="flex-1 overflow-y-auto p-4">
+                <a href="#dashboard" onclick="loadSection('dashboard')" class="nav-link flex items-center px-4 py-3 rounded-lg hover:bg-slate-700 transition-colors mb-2">
+                    <i class="fas fa-tachometer-alt w-5"></i>
+                    <span class="ml-3">Dashboard</span>
+                </a>
+                <a href="#admins" onclick="loadSection('admins')" class="nav-link flex items-center px-4 py-3 rounded-lg hover:bg-slate-700 transition-colors mb-2">
+                    <i class="fas fa-user-shield w-5"></i>
+                    <span class="ml-3">Administrators</span>
+                </a>
+                <a href="#payments" onclick="loadSection('payments')" class="nav-link flex items-center px-4 py-3 rounded-lg hover:bg-slate-700 transition-colors mb-2">
+                    <i class="fas fa-credit-card w-5"></i>
+                    <span class="ml-3">Payments</span>
+                </a>
+                <a href="#users" onclick="loadSection('users')" class="nav-link flex items-center px-4 py-3 rounded-lg hover:bg-slate-700 transition-colors mb-2">
+                    <i class="fas fa-users w-5"></i>
+                    <span class="ml-3">Users</span>
+                </a>
+                <a href="#system" onclick="loadSection('system')" class="nav-link flex items-center px-4 py-3 rounded-lg hover:bg-slate-700 transition-colors mb-2">
+                    <i class="fas fa-cogs w-5"></i>
+                    <span class="ml-3">System Settings</span>
+                </a>
+                <a href="#logs" onclick="loadSection('logs')" class="nav-link flex items-center px-4 py-3 rounded-lg hover:bg-slate-700 transition-colors mb-2">
+                    <i class="fas fa-file-alt w-5"></i>
+                    <span class="ml-3">Activity Logs</span>
+                </a>
+            </nav>
+            
+            <!-- User Profile -->
+            <div class="p-4 border-t border-slate-700">
+                <div class="flex items-center space-x-3 mb-3">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-red-500 to-pink-600 flex items-center justify-center">
+                        <span id="userInitials" class="font-bold">SA</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p id="userName" class="font-medium truncate">Super Admin</p>
+                        <p class="text-xs text-slate-400">Level 1 Access</p>
+                    </div>
+                </div>
+                <button onclick="logout()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition-colors">
+                    <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                </button>
+            </div>
+        </div>
+    </aside>
+    
+    <!-- Main Content -->
+    <div class="lg:ml-64 min-h-screen">
+        <!-- Header -->
+        <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-30">
+            <div class="px-4 py-4 flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button onclick="toggleMobileMenu()" class="lg:hidden p-2 hover:bg-slate-700 rounded-lg">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                    <h2 id="pageTitle" class="text-xl md:text-2xl font-bold">Dashboard</h2>
+                </div>
+                
+                <div class="flex items-center space-x-2 md:space-x-4">
+                    <button class="relative p-2 hover:bg-slate-700 rounded-lg">
+                        <i class="fas fa-bell text-xl"></i>
+                        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                    </button>
+                    <button class="hidden md:block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Quick Action
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Content Area -->
+        <main class="p-4 md:p-6">
+            <!-- Dashboard Section -->
+            <div id="dashboardSection" class="slide-in">
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6">
+                    <div class="glass-card rounded-xl p-6 border-l-4 border-blue-500">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="p-3 bg-blue-500/20 rounded-lg">
+                                <i class="fas fa-dollar-sign text-2xl text-blue-400"></i>
+                            </div>
+                            <span class="text-xs text-green-400">+12.5%</span>
+                        </div>
+                        <h3 id="totalRevenue" class="text-2xl md:text-3xl font-bold mb-1">Ksh 0</h3>
+                        <p class="text-sm text-slate-400">Total Revenue</p>
+                    </div>
+                    
+                    <div class="glass-card rounded-xl p-6 border-l-4 border-green-500">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="p-3 bg-green-500/20 rounded-lg">
+                                <i class="fas fa-users text-2xl text-green-400"></i>
+                            </div>
+                            <span class="text-xs text-green-400">+8.3%</span>
+                        </div>
+                        <h3 id="totalUsers" class="text-2xl md:text-3xl font-bold mb-1">0</h3>
+                        <p class="text-sm text-slate-400">Total Users</p>
+                    </div>
+                    
+                    <div class="glass-card rounded-xl p-6 border-l-4 border-yellow-500">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="p-3 bg-yellow-500/20 rounded-lg">
+                                <i class="fas fa-clock text-2xl text-yellow-400"></i>
+                            </div>
+                            <span class="text-xs text-yellow-400">0 pending</span>
+                        </div>
+                        <h3 id="pendingPayments" class="text-2xl md:text-3xl font-bold mb-1">0</h3>
+                        <p class="text-sm text-slate-400">Pending Payments</p>
+                    </div>
+                    
+                    <div class="glass-card rounded-xl p-6 border-l-4 border-purple-500">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="p-3 bg-purple-500/20 rounded-lg">
+                                <i class="fas fa-user-shield text-2xl text-purple-400"></i>
+                            </div>
+                            <span class="text-xs text-purple-400">Active</span>
+                        </div>
+                        <h3 id="activeAdmins" class="text-2xl md:text-3xl font-bold mb-1">0</h3>
+                        <p class="text-sm text-slate-400">Active Admins</p>
+                    </div>
+                </div>
+                
+                <!-- Charts -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <div class="glass-card rounded-xl p-6">
+                        <h3 class="text-lg font-bold mb-4">Revenue Overview</h3>
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                    
+                    <div class="glass-card rounded-xl p-6">
+                        <h3 class="text-lg font-bold mb-4">User Growth</h3>
+                        <canvas id="userChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Recent Activity -->
+                <div class="glass-card rounded-xl p-6">
+                    <h3 class="text-lg font-bold mb-4">Recent Activity</h3>
+                    <div id="recentActivity" class="space-y-3">
+                        <div class="flex items-center justify-between py-3 border-b border-slate-700">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                    <i class="fas fa-user text-blue-400"></i>
+                                </div>
+                                <div>
+                                    <p class="font-medium">New user registered</p>
+                                    <p class="text-sm text-slate-400">2 minutes ago</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Other Sections (Hidden by default) -->
+            <div id="adminsSection" class="hidden slide-in">
+                <div class="glass-card rounded-xl p-6">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                        <h3 class="text-xl font-bold">Administrators</h3>
+                        <button onclick="showAddAdminModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                            <i class="fas fa-plus mr-2"></i>Add Admin
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="border-b border-slate-700">
+                                <tr class="text-left">
+                                    <th class="pb-3 text-sm font-semibold text-slate-400">Name</th>
+                                    <th class="pb-3 text-sm font-semibold text-slate-400">Email</th>
+                                    <th class="pb-3 text-sm font-semibold text-slate-400">Role</th>
+                                    <th class="pb-3 text-sm font-semibold text-slate-400">Status</th>
+                                    <th class="pb-3 text-sm font-semibold text-slate-400">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminsTableBody">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="paymentsSection" class="hidden slide-in">
+                <div class="glass-card rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-6">Payment Management</h3>
+                    <p class="text-slate-400">Payment section content...</p>
+                </div>
+            </div>
+            
+            <div id="usersSection" class="hidden slide-in">
+                <div class="glass-card rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-6">User Management</h3>
+                    <p class="text-slate-400">Users section content...</p>
+                </div>
+            </div>
+            
+            <div id="systemSection" class="hidden slide-in">
+                <div class="glass-card rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-6">System Settings</h3>
+                    <p class="text-slate-400">System settings content...</p>
+                </div>
+            </div>
+            
+            <div id="logsSection" class="hidden slide-in">
+                <div class="glass-card rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-6">Activity Logs</h3>
+                    <p class="text-slate-400">Activity logs content...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:4000/graphql'; // Update to your GraphQL server URL
+        let currentAdmin = null;
+        let revenueChart = null;
+        let userChart = null;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async function() {
+            await checkAuth();
+            await loadDashboardData();
+            initializeCharts();
+        });
+        
+        async function checkAuth() {
+            const session = localStorage.getItem('admin_session');
+            
+            if (!session) {
+                window.location.href = '/admin/login.html';
+                return;
+            }
+            
+            try {
+                const sessionData = JSON.parse(session);
+                currentAdmin = sessionData.admin;
+                
+                // Update UI
+                document.getElementById('userName').textContent = currentAdmin.fullName;
+                const initials = currentAdmin.fullName.split(' ').map(n => n[0]).join('');
+                document.getElementById('userInitials').textContent = initials;
+                
+                // Validate session with backend
+                const response = await graphQLRequest(`
+                    query ValidateSession($token: String!) {
+                        adminValidateSession(sessionToken: $token) {
+                            isValid
+                            admin {
+                                id
+                                fullName
+                            }
+                            expiresAt
+                        }
+                    }
+                `, { token: sessionData.session.token });
+                
+                if (!response.adminValidateSession.isValid) {
+                    logout();
+                }
+            } catch (error) {
+                console.error('Auth error:', error);
+                logout();
+            }
+        }
+        
+        async function loadDashboardData() {
+            try {
+                const response = await graphQLRequest(`
+                    query GetDashboardStats($period: String!) {
+                        getDashboardStats(period: $period) {
+                            totalRevenue
+                            totalUsers
+                            pendingPayments
+                            activeAdmins
+                        }
+                    }
+                `, { period: 'month' });
+                
+                const stats = response.getDashboardStats;
+                
+                document.getElementById('totalRevenue').textContent = `Ksh ${stats.totalRevenue.toLocaleString()}`;
+                document.getElementById('totalUsers').textContent = stats.totalUsers.toLocaleString();
+                document.getElementById('pendingPayments').textContent = stats.pendingPayments;
+                document.getElementById('activeAdmins').textContent = stats.activeAdmins;
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                showError('Failed to load dashboard data');
+            }
+        }
+        
+        function initializeCharts() {
+            // Revenue Chart
+            const revenueCtx = document.getElementById('revenueChart');
+            revenueChart = new Chart(revenueCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                    datasets: [{
+                        label: 'Revenue',
+                        data: [12000, 19000, 15000, 25000, 22000, 30000],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+            
+            // User Chart
+            const userCtx = document.getElementById('userChart');
+            userChart = new Chart(userCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                    datasets: [{
+                        label: 'New Users',
+                        data: [65, 85, 70, 95, 110, 130],
+                        backgroundColor: '#8b5cf6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+        
+        function loadSection(section) {
+            // Hide all sections
+            document.querySelectorAll('[id$="Section"]').forEach(el => el.classList.add('hidden'));
+            
+            // Show selected section
+            document.getElementById(`${section}Section`).classList.remove('hidden');
+            
+            // Update page title
+            const titles = {
+                dashboard: 'Dashboard',
+                admins: 'Administrators',
+                payments: 'Payments',
+                users: 'Users',
+                system: 'System Settings',
+                logs: 'Activity Logs'
+            };
+            document.getElementById('pageTitle').textContent = titles[section];
+            
+            // Update active nav
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('bg-slate-700');
+            });
+            event.target.closest('.nav-link').classList.add('bg-slate-700');
+            
+            // Close mobile menu
+            if (window.innerWidth < 1024) {
+                toggleMobileMenu();
+            }
+            
+            // Load section data
+            if (section === 'admins') loadAdmins();
+        }
+        
+        async function loadAdmins() {
+            try {
+                const response = await graphQLRequest(`
+                    query GetAdminList($page: Int!, $limit: Int!) {
+                        getAdminList(page: $page, limit: $limit) {
+                            admins {
+                                id
+                                fullName
+                                email
+                                role { name }
+                                isActive
+                            }
+                        }
+                    }
+                `, { page: 1, limit: 10 });
+                
+                const tbody = document.getElementById('adminsTableBody');
+                tbody.innerHTML = response.getAdminList.admins.map(admin => `
+                    <tr class="border-b border-slate-700">
+                        <td class="py-4">${admin.fullName}</td>
+                        <td class="py-4 text-slate-400">${admin.email}</td>
+                        <td class="py-4"><span class="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">${admin.role.name}</span></td>
+                        <td class="py-4"><span class="px-2 py-1 ${admin.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} rounded text-xs">${admin.isActive ? 'Active' : 'Inactive'}</span></td>
+                        <td class="py-4">
+                            <button class="text-blue-400 hover:text-blue-300 mr-3"><i class="fas fa-edit"></i></button>
+                            <button class="text-red-400 hover:text-red-300"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading admins:', error);
+            }
+        }
+        
+        function toggleMobileMenu() {
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('mobileBackdrop');
+            
+            sidebar.classList.toggle('-translate-x-full');
+            backdrop.classList.toggle('hidden');
+        }
+        
+        function showAddAdminModal() {
+            Swal.fire({
+                title: 'Add New Administrator',
+                html: `
+                    <input id="adminName" class="swal2-input" placeholder="Full Name">
+                    <input id="adminEmail" class="swal2-input" placeholder="Email">
+                    <select id="adminRole" class="swal2-input">
+                        <option value="">Select Role</option>
+                        <option value="super_admin">Super Admin</option>
+                        <option value="admin_manager">Admin Manager</option>
+                        <option value="finance_admin">Finance Admin</option>
+                    </select>
+                `,
+                confirmButtonText: 'Create Admin',
+                showCancelButton: true,
+                preConfirm: () => {
+                    return {
+                        name: document.getElementById('adminName').value,
+                        email: document.getElementById('adminEmail').value,
+                        role: document.getElementById('adminRole').value
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showSuccess('Admin created successfully');
+                }
+            });
+        }
+        
+        function logout() {
+            Swal.fire({
+                title: 'Confirm Logout',
+                text: 'Are you sure you want to logout?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, logout',
+                confirmButtonColor: '#ef4444'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    localStorage.removeItem('admin_session');
+                    window.location.href = '/admin/login.html';
+                }
+            });
+        }
+        
+        async function graphQLRequest(query, variables = {}) {
+            const session = JSON.parse(localStorage.getItem('admin_session'));
+            
+            const response = await fetch(API_BASE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.session.token}`
+                },
+                body: JSON.stringify({ query, variables })
+            });
+            
+            if (!response.ok) throw new Error('Network error');
+            
+            const result = await response.json();
+            if (result.errors) throw new Error(result.errors[0].message);
+            
+            return result.data;
+        }
+        
+        function showError(message) {
+            Swal.fire({ icon: 'error', title: 'Error', text: message, toast: true, position: 'top-end', timer: 3000, showConfirmButton: false });
+        }
+        
+        function showSuccess(message) {
+            Swal.fire({ icon: 'success', title: 'Success', text: message, toast: true, position: 'top-end', timer: 3000, showConfirmButton: false });
+        }
+    </script>
+</body>
+</html>

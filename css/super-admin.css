@@ -1,0 +1,247 @@
+/* Super Admin Specific Styles */
+
+/* Custom animations */
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.5); }
+    50% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+}
+
+@keyframes crown-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Custom classes */
+.crown-glow {
+    animation: pulse-glow 2s infinite;
+}
+
+.crown-spin {
+    animation: crown-spin 10s linear infinite;
+}
+
+/* Super admin specific buttons */
+.btn-super-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+}
+
+.btn-super-danger:hover {
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+}
+
+/* Permission badges */
+.permission-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    margin: 2px;
+}
+
+.permission-all {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.permission-write {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.permission-read {
+    background: rgba(59, 130, 246, 0.2);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+/* System health indicators */
+.health-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+.health-excellent { background-color: #10b981; }
+.health-good { background-color: #22c55e; }
+.health-fair { background-color: #f59e0b; }
+.health-poor { background-color: #ef4444; }
+.health-critical { background-color: #dc2626; animation: pulse 1s infinite; }
+
+/* Access level indicators */
+.access-level {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.level-1 { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+.level-2 { background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; }
+.level-3 { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+.level-4 { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+.level-5 { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+
+/* Critical alerts */
+.critical-alert {
+    border-left: 4px solid #ef4444;
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.1) 0%, transparent 100%);
+}
+
+/* System logs */
+.log-entry {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin: 2px 0;
+}
+
+.log-debug { background: rgba(107, 114, 128, 0.1); color: #9ca3af; }
+.log-info { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.log-warn { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.log-error { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.log-critical { background: rgba(220, 38, 38, 0.2); color: #dc2626; font-weight: bold; }
+
+/* Database tables */
+.db-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.db-table th {
+    background: rgba(30, 41, 59, 0.8);
+    padding: 12px;
+    text-align: left;
+    border-bottom: 2px solid #334155;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+.db-table td {
+    padding: 12px;
+    border-bottom: 1px solid #334155;
+    color: #e2e8f0;
+}
+
+.db-table tr:hover {
+    background: rgba(59, 130, 246, 0.05);
+}
+
+/* Backup status */
+.backup-status {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.backup-success { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.backup-pending { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.backup-failed { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.backup-running { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+
+/* Super admin dashboard widgets */
+.widget-critical {
+    border: 2px solid #ef4444;
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.widget-warning {
+    border: 2px solid #f59e0b;
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.widget-success {
+    border: 2px solid #10b981;
+    background: rgba(16, 185, 129, 0.05);
+}
+
+/* Real-time indicators */
+.realtime-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.realtime-online { background: #10b981; animation: pulse 2s infinite; }
+.realtime-offline { background: #ef4444; }
+.realtime-warning { background: #f59e0b; animation: pulse 2s infinite; }
+
+/* Security scan results */
+.security-score {
+    font-size: 32px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.security-excellent { color: #10b981; }
+.security-good { color: #22c55e; }
+.security-fair { color: #f59e0b; }
+.security-poor { color: #ef4444; }
+
+/* API status */
+.api-status {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.api-active { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.api-inactive { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+.api-error { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+/* Custom scrollbar for super admin */
+.super-scrollbar::-webkit-scrollbar {
+    width: 10px;
+}
+
+.super-scrollbar::-webkit-scrollbar-track {
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 5px;
+}
+
+.super-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border-radius: 5px;
+}
+
+.super-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .access-level {
+        font-size: 10px;
+        padding: 2px 8px;
+    }
+    
+    .permission-badge {
+        font-size: 9px;
+        padding: 1px 6px;
+    }
+}
+
+/* Print styles for super admin */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    .print-only {
+        display: block !important;
+    }
+    
+    .security-report {
+        break-inside: avoid;
+    }
+}
