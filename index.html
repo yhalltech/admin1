@@ -9,7 +9,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js"></script>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <style>
         :root {
@@ -208,21 +207,6 @@
             overflow: hidden;
         }
         
-        .qr-preview-container {
-            text-align: center;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .qr-preview {
-            max-width: 300px;
-            height: auto;
-            margin: 0 auto;
-            display: block;
-        }
-        
         .ticket-design {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 20px;
@@ -256,6 +240,38 @@
             transform: translateY(-50%);
             color: rgba(255, 255, 255, 0.6);
         }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .loading-spinner {
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
         
         @media (max-width: 768px) {
             .sidebar {
@@ -281,6 +297,15 @@
     </style>
 </head>
 <body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <h3 class="text-white">Loading Dashboard...</h3>
+            <p class="text-white/70">Fetching payment data</p>
+        </div>
+    </div>
+
     <!-- Sidebar Toggle for Mobile -->
     <button class="btn btn-primary d-md-none position-fixed" style="top: 20px; left: 20px; z-index: 1002;" id="sidebarToggle">
         <i class="bi bi-list"></i>
@@ -299,8 +324,8 @@
                         <i class="bi bi-person-circle text-white"></i>
                     </div>
                     <div>
-                        <h6 class="mb-0 text-white">Administrator</h6>
-                        <small class="text-light">Admin Panel</small>
+                        <h6 class="mb-0 text-white" id="adminName">Administrator</h6>
+                        <small class="text-light" id="adminEmail">admin@kalenjin.com</small>
                     </div>
                 </div>
             </div>
@@ -327,6 +352,11 @@
                     </a>
                 </li>
                 <li class="nav-item mt-4">
+                    <a class="nav-link text-white" href="#" onclick="refreshData()">
+                        <i class="bi bi-arrow-clockwise me-2"></i> Refresh Data
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link text-danger" href="#" onclick="logout()">
                         <i class="bi bi-box-arrow-right me-2"></i> Logout
                     </a>
@@ -345,7 +375,7 @@
                 <div class="text-light" id="currentDateTime"></div>
             </div>
             
-            <!-- Stats Row - CLICKABLE -->
+            <!-- Stats Row -->
             <div class="row mb-4">
                 <div class="col-xl-3 col-md-6 mb-4">
                     <div class="stat-card p-4" onclick="showAllPaymentsModal()">
@@ -450,9 +480,9 @@
             <h1 class="gradient-text mb-4"><i class="bi bi-check-circle me-2"></i> Payment Verification</h1>
             <div class="glass-card p-4">
                 <div class="mb-3">
-                    <label class="form-label text-light">Paste M-Pesa Message</label>
+                    <label class="form-label text-light">Paste M-Pesa Message or Transaction Code</label>
                     <textarea class="form-control bg-dark text-light" id="mpesaMessage" 
-                              rows="5" placeholder="Paste complete M-Pesa SMS..."></textarea>
+                              rows="5" placeholder="Paste complete M-Pesa SMS or just the transaction code..."></textarea>
                 </div>
                 <button class="action-btn btn-verify" onclick="verifyFromMessage()">
                     <i class="bi bi-search"></i> Verify Payment
@@ -481,7 +511,9 @@
                             </tr>
                         </thead>
                         <tbody id="paymentsTable">
-                            <!-- Payments will be loaded here -->
+                            <tr>
+                                <td colspan="6" class="text-center py-4">Loading...</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -499,7 +531,7 @@
         </div>
     </div>
 
-    <!-- Modals -->
+    <!-- All Modals -->
     
     <!-- QR Scanner Modal -->
     <div class="modal fade" id="qrScannerModal" tabindex="-1">
@@ -710,104 +742,111 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Payment data - NO HARDCODED DATA
+    
+    <!-- Firebase Import -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+        import { getFirestore, collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, query, orderBy, where } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyARficcDI3R1ELfjkQxL-kkFQr-tzOgzgo",
+            authDomain: "k-vibez.firebaseapp.com",
+            projectId: "k-vibez",
+            storageBucket: "k-vibez.firebasestorage.app",
+            messagingSenderId: "1060235903242",
+            appId: "1:1060235903242:web:4649b48406879fb7fcfaf3"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Global variables
         let allPayments = [];
         let currentQRPayment = null;
         let html5QrCode = null;
-        
-        // Local storage keys
-        const PAYMENTS_STORAGE_KEY = 'kalenjin_payments';
-        const CACHE_TIMESTAMP_KEY = 'kalenjin_cache_timestamp';
-        const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
+        let adminData = null;
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', async function() {
-            initializeDashboard();
-            await loadPayments();
-            setupEventListeners();
-            updateDateTime();
-            setInterval(updateDateTime, 60000);
+        // Check authentication
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // User is signed in
+                adminData = JSON.parse(localStorage.getItem('kalenjin_admin') || sessionStorage.getItem('kalenjin_admin'));
+                
+                if (adminData) {
+                    // Update admin info in sidebar
+                    document.getElementById('adminName').textContent = adminData.name || 'Administrator';
+                    document.getElementById('adminEmail').textContent = adminData.email;
+                    
+                    // Load data
+                    await loadPaymentsFromFirestore();
+                    
+                    // Hide loading overlay
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    
+                    // Initialize
+                    initializeDashboard();
+                    setupEventListeners();
+                    updateDateTime();
+                    setInterval(updateDateTime, 60000);
+                } else {
+                    // Redirect to login if no session data
+                    window.location.href = 'login.html';
+                }
+            } else {
+                // User is signed out, redirect to login
+                window.location.href = 'login.html';
+            }
         });
 
-        function initializeDashboard() {
-            document.getElementById('sidebarToggle')?.addEventListener('click', function() {
-                document.getElementById('sidebar').classList.toggle('active');
-            });
-        }
-
-        function updateDateTime() {
-            const now = new Date();
-            document.getElementById('currentDateTime').textContent = 
-                now.toLocaleDateString('en-US', { 
-                    weekday: 'short', month: 'short', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                });
-        }
-
-        // Load payments - NO HARDCODED DATA
-        async function loadPayments() {
+        // Load payments from Firebase Firestore
+        async function loadPaymentsFromFirestore() {
             try {
-                // First try to load from localStorage cache
-                const cachedData = loadFromCache();
+                console.log('Loading payments from Firestore...');
                 
-                if (cachedData && cachedData.length > 0) {
-                    allPayments = cachedData;
-                    console.log('Loaded from cache:', allPayments.length, 'payments');
-                } else {
-                    // If no cache, try to fetch from API
-                    allPayments = await fetchPaymentsFromAPI();
-                    saveToCache(allPayments);
-                }
+                const paymentsQuery = query(
+                    collection(db, "payments"),
+                    orderBy("createdAt", "desc")
+                );
                 
+                const querySnapshot = await getDocs(paymentsQuery);
+                allPayments = [];
+                
+                querySnapshot.forEach((doc) => {
+                    const paymentData = doc.data();
+                    allPayments.push({
+                        id: doc.id,
+                        ...paymentData,
+                        date: paymentData.createdAt?.toDate() || new Date(),
+                        amount: parseFloat(paymentData.amount) || 0
+                    });
+                });
+                
+                console.log(`Loaded ${allPayments.length} payments from Firestore`);
+                
+                // Update UI with real data
                 updateDashboardStats();
                 loadRecentActivity();
                 loadPaymentsTable();
                 
                 // Mark as loaded
                 document.getElementById('recentActivity').classList.add('loaded');
+                
             } catch (error) {
-                console.error('Error loading payments:', error);
-                // Start with empty array if nothing is available
+                console.error('Error loading payments from Firestore:', error);
+                showError('Failed to load payment data. Please refresh.');
+                
+                // Initialize with empty array
                 allPayments = [];
                 updateDashboardStats();
                 loadRecentActivity();
             }
         }
 
-        async function fetchPaymentsFromAPI() {
-            // This is where you would implement actual API call
-            // For now, return empty array - no hardcoded data
-            console.log('Fetching from API...');
-            return [];
-        }
-
-        // Cache management
-        function saveToCache(payments) {
-            try {
-                localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(payments));
-                localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
-                console.log('Saved to cache:', payments.length, 'payments');
-            } catch (e) {
-                console.error('Cache save error:', e);
-            }
-        }
-
-        function loadFromCache() {
-            try {
-                const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
-                if (timestamp && Date.now() - parseInt(timestamp) < CACHE_DURATION) {
-                    const data = localStorage.getItem(PAYMENTS_STORAGE_KEY);
-                    return data ? JSON.parse(data) : [];
-                }
-                return [];
-            } catch (e) {
-                console.error('Cache load error:', e);
-                return [];
-            }
-        }
-
-        // Dashboard stats
+        // Update dashboard statistics
         function updateDashboardStats() {
             const total = allPayments.reduce((sum, p) => sum + p.amount, 0);
             const pending = allPayments.filter(p => p.status === 'pending').length;
@@ -823,10 +862,9 @@
             document.getElementById('allVerifiedCount').textContent = allVerified;
         }
 
+        // Load recent activity
         function loadRecentActivity() {
-            const recent = [...allPayments]
-                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                .slice(0, 5);
+            const recent = [...allPayments].slice(0, 5);
             
             let html = '';
             
@@ -849,8 +887,8 @@
                             <div class="d-flex align-items-center">
                                 <i class="bi bi-${icon} fs-4 me-3"></i>
                                 <div>
-                                    <h6 class="mb-0 text-light">${payment.customerName}</h6>
-                                    <small class="text-muted">${payment.method || 'Unknown'} • ${payment.status}</small>
+                                    <h6 class="mb-0 text-light">${payment.fullName || payment.customerName || 'Customer'}</h6>
+                                    <small class="text-muted">${payment.paymentMethod || 'Unknown'} • ${payment.status}</small>
                                 </div>
                             </div>
                             <div class="text-end">
@@ -865,6 +903,7 @@
             document.getElementById('recentActivity').innerHTML = html;
         }
 
+        // Load payments table
         function loadPaymentsTable() {
             const tableBody = document.getElementById('paymentsTable');
             let html = '';
@@ -887,12 +926,12 @@
                     html += `
                         <tr>
                             <td>
-                                <strong>${p.transactionCode}</strong><br>
-                                <small class="text-muted">${p.method || 'N/A'}</small>
+                                <strong>${p.transactionReference || p.transactionCode || 'N/A'}</strong><br>
+                                <small class="text-muted">${p.paymentMethod || 'N/A'}</small>
                             </td>
                             <td>
-                                ${p.customerName}<br>
-                                <small class="text-muted">${p.phone || 'N/A'}</small>
+                                ${p.fullName || p.customerName || 'Customer'}<br>
+                                <small class="text-muted">${p.phoneNumber || p.phone || 'N/A'}</small>
                             </td>
                             <td class="text-light">KES ${p.amount.toLocaleString()}</td>
                             <td><span class="status-badge ${statusBadge}">${p.status}</span></td>
@@ -917,6 +956,211 @@
             }
             
             tableBody.innerHTML = html;
+        }
+
+        // Verify payment
+        async function verifyPayment(id) {
+            try {
+                const paymentRef = doc(db, "payments", id);
+                await updateDoc(paymentRef, {
+                    status: 'verified',
+                    verifiedDate: serverTimestamp(),
+                    verifiedBy: adminData.email
+                });
+                
+                // Update local data
+                const paymentIndex = allPayments.findIndex(p => p.id === id);
+                if (paymentIndex !== -1) {
+                    allPayments[paymentIndex].status = 'verified';
+                    allPayments[paymentIndex].verifiedDate = new Date();
+                }
+                
+                updateDashboardStats();
+                loadRecentActivity();
+                loadPaymentsTable();
+                showSuccess('Payment verified successfully!');
+                
+                // Close modal if open
+                const modal = bootstrap.Modal.getInstance(document.getElementById('pendingModal'));
+                if (modal) modal.hide();
+                
+            } catch (error) {
+                console.error('Error verifying payment:', error);
+                showError('Failed to verify payment. Please try again.');
+            }
+        }
+
+        // Reject payment
+        async function rejectPayment(id) {
+            try {
+                const paymentRef = doc(db, "payments", id);
+                await updateDoc(paymentRef, {
+                    status: 'rejected',
+                    rejectedDate: serverTimestamp(),
+                    rejectedBy: adminData.email
+                });
+                
+                // Update local data
+                const paymentIndex = allPayments.findIndex(p => p.id === id);
+                if (paymentIndex !== -1) {
+                    allPayments[paymentIndex].status = 'rejected';
+                }
+                
+                updateDashboardStats();
+                loadRecentActivity();
+                loadPaymentsTable();
+                showSuccess('Payment rejected');
+                
+                // Close modal if open
+                const modal = bootstrap.Modal.getInstance(document.getElementById('pendingModal'));
+                if (modal) modal.hide();
+                
+            } catch (error) {
+                console.error('Error rejecting payment:', error);
+                showError('Failed to reject payment. Please try again.');
+            }
+        }
+
+        // Save cash payment
+        async function saveCashPayment() {
+            const name = document.getElementById('cashCustomerName').value.trim();
+            const phone = document.getElementById('cashPhoneNumber').value.trim();
+            const email = document.getElementById('cashEmail').value.trim();
+            const amount = parseFloat(document.getElementById('cashAmount').value);
+            
+            if (!name) {
+                alert('Please enter customer name');
+                return;
+            }
+            
+            if (!phone) {
+                alert('Please enter phone number');
+                return;
+            }
+            
+            if (!amount || amount <= 0) {
+                alert('Please enter a valid amount');
+                return;
+            }
+            
+            // Generate unique transaction code
+            const transactionCode = 'CASH' + Date.now().toString().slice(-6) + Math.random().toString(36).substr(2, 4).toUpperCase();
+            
+            try {
+                // Save to Firestore
+                const docRef = await addDoc(collection(db, "payments"), {
+                    fullName: name,
+                    phoneNumber: phone,
+                    email: email,
+                    amount: amount,
+                    paymentMethod: 'CASH',
+                    transactionReference: transactionCode,
+                    status: 'verified',
+                    bookingType: 'cash',
+                    createdAt: serverTimestamp(),
+                    verifiedDate: serverTimestamp(),
+                    verifiedBy: adminData.email
+                });
+                
+                // Add to local array
+                const newPayment = {
+                    id: docRef.id,
+                    fullName: name,
+                    phoneNumber: phone,
+                    email: email,
+                    amount: amount,
+                    paymentMethod: 'CASH',
+                    transactionReference: transactionCode,
+                    status: 'verified',
+                    date: new Date(),
+                    verifiedDate: new Date()
+                };
+                
+                allPayments.unshift(newPayment);
+                
+                // Update UI
+                updateDashboardStats();
+                loadRecentActivity();
+                loadPaymentsTable();
+                
+                showSuccess('Cash payment added and verified successfully!');
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addCashPaymentModal'));
+                if (modal) modal.hide();
+                
+                // Prepare to send QR code
+                currentQRPayment = newPayment;
+                setTimeout(() => {
+                    prepareQRForSending(newPayment.id);
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error saving cash payment:', error);
+                showError('Failed to save cash payment. Please try again.');
+            }
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            document.getElementById('successMessage').textContent = message;
+            new bootstrap.Modal(document.getElementById('successModal')).show();
+        }
+
+        // Show error message
+        function showError(message) {
+            alert(message);
+        }
+
+        // Logout function
+        async function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                try {
+                    await signOut(auth);
+                    localStorage.removeItem('kalenjin_admin');
+                    sessionStorage.removeItem('kalenjin_admin');
+                    window.location.href = 'login.html';
+                } catch (error) {
+                    console.error('Error logging out:', error);
+                    showError('Failed to logout. Please try again.');
+                }
+            }
+        }
+
+        // Refresh data
+        async function refreshData() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            await loadPaymentsFromFirestore();
+            document.getElementById('loadingOverlay').style.display = 'none';
+            showSuccess('Data refreshed successfully!');
+        }
+
+        // Initialize date time
+        function updateDateTime() {
+            const now = new Date();
+            document.getElementById('currentDateTime').textContent = 
+                now.toLocaleDateString('en-US', { 
+                    weekday: 'short', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+        }
+
+        // Section navigation
+        function showSection(sectionId) {
+            ['dashboard', 'verification', 'payments', 'qr-management'].forEach(id => {
+                document.getElementById(id).style.display = 'none';
+            });
+            document.getElementById(sectionId).style.display = 'block';
+            
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            event?.target?.classList.add('active');
+            
+            // Close mobile sidebar
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.remove('active');
+            }
         }
 
         // Search functions
@@ -950,29 +1194,6 @@
             });
         }
 
-        // Section navigation
-        function showSection(sectionId) {
-            ['dashboard', 'verification', 'payments', 'qr-management'].forEach(id => {
-                document.getElementById(id).style.display = 'none';
-            });
-            document.getElementById(sectionId).style.display = 'block';
-            
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('active');
-            });
-            event?.target?.classList.add('active');
-            
-            // Load data for specific sections
-            if (sectionId === 'payments') {
-                loadPaymentsTable();
-            }
-            
-            // Close mobile sidebar
-            if (window.innerWidth < 768) {
-                document.getElementById('sidebar').classList.remove('active');
-            }
-        }
-
         // Modal functions
         function showAllPaymentsModal() {
             let html = '<div class="table-responsive"><table class="table table-dark">';
@@ -983,7 +1204,7 @@
             } else {
                 allPayments.forEach(p => {
                     html += `<tr>
-                        <td>${p.customerName}<br><small>${p.phone || 'N/A'}</small></td>
+                        <td>${p.fullName || p.customerName || 'Customer'}<br><small>${p.phoneNumber || p.phone || 'N/A'}</small></td>
                         <td>KES ${p.amount.toLocaleString()}</td>
                         <td><span class="status-badge badge-${p.status}">${p.status}</span></td>
                         <td>${new Date(p.date).toLocaleDateString()}</td>
@@ -1008,10 +1229,10 @@
                         <div class="payment-card pending">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
-                                    <h6 class="text-light">${p.customerName}</h6>
-                                    <p class="text-muted mb-1">${p.transactionCode}</p>
+                                    <h6 class="text-light">${p.fullName || p.customerName || 'Customer'}</h6>
+                                    <p class="text-muted mb-1">${p.transactionReference || p.transactionCode || 'N/A'}</p>
                                     <p class="text-light mb-1">KES ${p.amount.toLocaleString()}</p>
-                                    <small class="text-muted">${p.phone || 'N/A'}</small>
+                                    <small class="text-muted">${p.phoneNumber || p.phone || 'N/A'}</small>
                                 </div>
                                 <div class="d-flex flex-column gap-2">
                                     <button class="btn btn-sm btn-success" onclick="verifyPayment('${p.id}')">
@@ -1046,8 +1267,8 @@
                         <div class="payment-card verified">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h6 class="text-light">${p.customerName}</h6>
-                                    <p class="text-muted mb-1">${p.transactionCode} • ${p.method || 'N/A'}</p>
+                                    <h6 class="text-light">${p.fullName || p.customerName || 'Customer'}</h6>
+                                    <p class="text-muted mb-1">${p.transactionReference || p.transactionCode || 'N/A'} • ${p.paymentMethod || 'N/A'}</p>
                                     <p class="text-light">KES ${p.amount.toLocaleString()}</p>
                                 </div>
                                 <button class="btn btn-sm btn-info" onclick="prepareQRForSending('${p.id}')">
@@ -1075,9 +1296,9 @@
                         <div class="payment-card verified">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h6 class="text-light">${p.customerName}</h6>
-                                    <p class="text-muted mb-1">${p.email || 'No email'} • ${p.phone || 'N/A'}</p>
-                                    <p class="text-light mb-1">KES ${p.amount.toLocaleString()} • ${p.transactionCode}</p>
+                                    <h6 class="text-light">${p.fullName || p.customerName || 'Customer'}</h6>
+                                    <p class="text-muted mb-1">${p.email || 'No email'} • ${p.phoneNumber || p.phone || 'N/A'}</p>
+                                    <p class="text-light mb-1">KES ${p.amount.toLocaleString()} • ${p.transactionReference || p.transactionCode || 'N/A'}</p>
                                     <small class="text-muted">${new Date(p.date).toLocaleDateString()}</small>
                                 </div>
                                 <button class="btn btn-sm btn-info" onclick="prepareQRForSending('${p.id}')">
@@ -1094,7 +1315,7 @@
         }
 
         // QR Code Generation and Sending
-        function prepareQRForSending(paymentId) {
+        async function prepareQRForSending(paymentId) {
             const payment = allPayments.find(p => p.id === paymentId);
             if (!payment) {
                 alert('Payment not found');
@@ -1105,8 +1326,8 @@
             
             // Generate QR code data
             const qrData = JSON.stringify({
-                transactionCode: payment.transactionCode,
-                customerName: payment.customerName,
+                transactionCode: payment.transactionReference || payment.transactionCode,
+                customerName: payment.fullName || payment.customerName,
                 amount: payment.amount,
                 date: payment.date,
                 event: "Kalenjin Vibes Festival",
@@ -1115,26 +1336,27 @@
             });
             
             // Generate QR code
-            generateQRCode(qrData).then(qrImage => {
-                // Create ticket design with QR code
-                const ticketHtml = createTicketHTML(payment, qrImage);
-                
-                // Set QR preview
-                document.getElementById('qrPreviewContainer').innerHTML = ticketHtml;
-                
-                // Set email message
-                const eventDate = new Date();
-                eventDate.setDate(eventDate.getDate() + 14); // Event in 2 weeks
-                
-                const emailMessage = `Dear ${payment.customerName},
+            const qrImage = await generateQRCode(qrData);
+            
+            // Create ticket design with QR code
+            const ticketHtml = createTicketHTML(payment, qrImage);
+            
+            // Set QR preview
+            document.getElementById('qrPreviewContainer').innerHTML = ticketHtml;
+            
+            // Set email message
+            const eventDate = new Date();
+            eventDate.setDate(eventDate.getDate() + 14); // Event in 2 weeks
+            
+            const emailMessage = `Dear ${payment.fullName || payment.customerName},
 
 Your payment of KES ${payment.amount.toLocaleString()} has been verified and confirmed.
 
 TRANSACTION DETAILS:
 📅 Payment Date: ${new Date(payment.date).toLocaleDateString()}
 💰 Amount: KES ${payment.amount.toLocaleString()}
-📝 Transaction Code: ${payment.transactionCode}
-💳 Method: ${payment.method || 'Manual'}
+📝 Transaction Code: ${payment.transactionReference || payment.transactionCode}
+💳 Method: ${payment.paymentMethod || 'Manual'}
 
 EVENT INFORMATION:
 🎵 Event: Kalenjin Vibes Festival
@@ -1158,14 +1380,13 @@ We look forward to seeing you at the festival!
 Best regards,
 Kalenjin Vibes Team`;
 
-                document.getElementById('emailMessage').value = emailMessage;
-                
-                // Show modal
-                new bootstrap.Modal(document.getElementById('sendQRModal')).show();
-            });
+            document.getElementById('emailMessage').value = emailMessage;
+            
+            // Show modal
+            new bootstrap.Modal(document.getElementById('sendQRModal')).show();
         }
 
-        function generateQRCode(data) {
+        async function generateQRCode(data) {
             return new Promise((resolve) => {
                 const canvas = document.createElement('canvas');
                 QRCode.toCanvas(canvas, data, {
@@ -1179,7 +1400,7 @@ Kalenjin Vibes Team`;
                     if (error) {
                         console.error('QR generation error:', error);
                         // Fallback to simple div
-                        resolve('<div style="width:300px;height:300px;background:#fff;color:#000;display:flex;align-items:center;justify-content:center;border-radius:10px;"><div style="text-align:center;"><div style="font-size:48px;">🎫</div><div>Ticket: ' + currentQRPayment.transactionCode + '</div></div></div>');
+                        resolve('<div style="width:300px;height:300px;background:#fff;color:#000;display:flex;align-items:center;justify-content:center;border-radius:10px;"><div style="text-align:center;"><div style="font-size:48px;">🎫</div><div>Ticket: ' + currentQRPayment.transactionReference + '</div></div></div>');
                     } else {
                         resolve(canvas.toDataURL('image/png'));
                     }
@@ -1195,13 +1416,13 @@ Kalenjin Vibes Team`;
                 <div class="ticket-design" id="ticketDesign">
                     <h3 class="mb-3">🎵 Kalenjin Vibes Festival</h3>
                     <div class="mb-4">
-                        <h5>${payment.customerName}</h5>
-                        <p class="mb-1">Transaction: ${payment.transactionCode}</p>
+                        <h5>${payment.fullName || payment.customerName || 'Customer'}</h5>
+                        <p class="mb-1">Transaction: ${payment.transactionReference || payment.transactionCode || 'N/A'}</p>
                         <p class="mb-1">Amount: KES ${payment.amount.toLocaleString()}</p>
                         <p>Date: ${new Date(payment.date).toLocaleDateString()}</p>
                     </div>
                     ${typeof qrImage === 'string' && qrImage.startsWith('data:image') 
-                        ? `<img src="${qrImage}" alt="QR Code" class="qr-preview mb-3">`
+                        ? `<img src="${qrImage}" alt="QR Code" class="qr-preview mb-3" style="max-width: 300px; height: auto; margin: 0 auto; display: block;">`
                         : qrImage}
                     <div class="mt-3">
                         <p class="mb-1">📅 ${eventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
@@ -1227,7 +1448,7 @@ Kalenjin Vibes Team`;
                 return;
             }
 
-            const subject = encodeURIComponent(`Your Kalenjin Vibes Ticket - ${currentQRPayment.transactionCode}`);
+            const subject = encodeURIComponent(`Your Kalenjin Vibes Ticket - ${currentQRPayment.transactionReference || currentQRPayment.transactionCode}`);
             const body = encodeURIComponent(document.getElementById('emailMessage').value);
             
             // Create a mailto link
@@ -1254,7 +1475,7 @@ Kalenjin Vibes Team`;
                 useCORS: true
             }).then(canvas => {
                 const link = document.createElement('a');
-                const fileName = `Kalenjin_Ticket_${currentQRPayment.customerName.replace(/[^a-z0-9]/gi, '_')}_${currentQRPayment.transactionCode}.png`;
+                const fileName = `Kalenjin_Ticket_${(currentQRPayment.fullName || currentQRPayment.customerName || 'Customer').replace(/[^a-z0-9]/gi, '_')}_${currentQRPayment.transactionReference || currentQRPayment.transactionCode}.png`;
                 link.download = fileName;
                 link.href = canvas.toDataURL('image/png');
                 link.click();
@@ -1319,13 +1540,15 @@ Kalenjin Vibes Team`;
         function onQRScanSuccess(decodedText) {
             try {
                 const qrData = JSON.parse(decodedText);
-                const payment = allPayments.find(p => p.transactionCode === qrData.transactionCode);
+                const payment = allPayments.find(p => 
+                    (p.transactionReference === qrData.transactionCode) || 
+                    (p.transactionCode === qrData.transactionCode)
+                );
                 
                 if (payment && payment.status === 'verified') {
                     payment.attended = true;
-                    saveToCache(allPayments);
                     showQRResult('success', `✅ Valid Ticket!<br><br>
-                        Customer: ${payment.customerName}<br>
+                        Customer: ${payment.fullName || payment.customerName}<br>
                         Amount: KES ${payment.amount.toLocaleString()}<br>
                         Status: VERIFIED<br>
                         Time: ${new Date().toLocaleTimeString()}`);
@@ -1347,56 +1570,22 @@ Kalenjin Vibes Team`;
             resultDiv.innerHTML = `<div class="alert alert-${alertClass}">${message}</div>`;
         }
 
-        // Payment verification
-        function verifyPayment(id) {
-            const payment = allPayments.find(p => p.id === id);
-            if (payment) {
-                payment.status = 'verified';
-                payment.verifiedDate = new Date().toISOString();
-                saveToCache(allPayments);
-                updateDashboardStats();
-                loadRecentActivity();
-                loadPaymentsTable();
-                showSuccess('Payment verified successfully!');
-                const modal = bootstrap.Modal.getInstance(document.getElementById('pendingModal'));
-                if (modal) modal.hide();
-            }
-        }
-
-        function rejectPayment(id) {
-            const payment = allPayments.find(p => p.id === id);
-            if (payment) {
-                payment.status = 'rejected';
-                saveToCache(allPayments);
-                updateDashboardStats();
-                loadRecentActivity();
-                loadPaymentsTable();
-                showSuccess('Payment rejected');
-                const modal = bootstrap.Modal.getInstance(document.getElementById('pendingModal'));
-                if (modal) modal.hide();
-            }
-        }
-
+        // Payment verification from message
         function verifyFromMessage() {
             const message = document.getElementById('mpesaMessage').value;
             const code = extractTransactionCode(message);
             
             if (code) {
-                const payment = allPayments.find(p => p.transactionCode === code);
+                const payment = allPayments.find(p => 
+                    p.transactionReference === code || p.transactionCode === code
+                );
                 if (payment) {
-                    payment.status = 'verified';
-                    payment.verifiedDate = new Date().toISOString();
-                    saveToCache(allPayments);
-                    updateDashboardStats();
-                    loadRecentActivity();
-                    loadPaymentsTable();
+                    verifyPayment(payment.id);
                     document.getElementById('verificationResult').innerHTML = 
-                        `<div class="alert alert-success">Payment verified: ${payment.customerName}</div>`;
+                        `<div class="alert alert-success">Payment found: ${payment.fullName || payment.customerName}. Verifying...</div>`;
                 } else {
                     document.getElementById('verificationResult').innerHTML = 
-                        `<div class="alert alert-warning">Transaction not found. Would you like to add it? 
-                        <button class="btn btn-sm btn-primary ms-2" onclick="addNewPaymentFromMessage('${code}')">Add Payment</button>
-                        </div>`;
+                        `<div class="alert alert-warning">Transaction not found. Code: ${code}</div>`;
                 }
             } else {
                 document.getElementById('verificationResult').innerHTML = 
@@ -1404,20 +1593,7 @@ Kalenjin Vibes Team`;
             }
         }
 
-        function addNewPaymentFromMessage(code) {
-            // In a real implementation, you would parse the M-Pesa message
-            // For now, open the cash payment modal with the transaction code
-            document.getElementById('cashCustomerName').value = 'Customer from M-Pesa';
-            document.getElementById('cashPhoneNumber').value = '';
-            document.getElementById('cashEmail').value = '';
-            document.getElementById('cashAmount').value = '';
-            
-            new bootstrap.Modal(document.getElementById('addCashPaymentModal')).show();
-            document.getElementById('verificationResult').innerHTML = 
-                `<div class="alert alert-info">Please complete the payment details above</div>`;
-        }
-
-        function extractTransactionCode(message) {
+        function extractTransactionCode(text) {
             // Look for common M-Pesa transaction code patterns
             const patterns = [
                 /confirmation\s+code\s+is?\s*([A-Z0-9]{10})/i,
@@ -1428,7 +1604,7 @@ Kalenjin Vibes Team`;
             ];
             
             for (const pattern of patterns) {
-                const match = message.match(pattern);
+                const match = text.match(pattern);
                 if (match) {
                     // Return the first group that looks like a transaction code
                     for (let i = 1; i < match.length; i++) {
@@ -1441,12 +1617,10 @@ Kalenjin Vibes Team`;
             return null;
         }
 
-        // Manual verification - Only loads verified payments
+        // Manual verification
         function openManualVerification() {
-            // Clear previous results
             document.getElementById('manualVerificationResult').innerHTML = '';
             document.getElementById('manualTransactionCode').value = '';
-            
             new bootstrap.Modal(document.getElementById('manualVerificationModal')).show();
         }
 
@@ -1460,14 +1634,16 @@ Kalenjin Vibes Team`;
             }
             
             // Look for payment with this transaction code
-            const payment = allPayments.find(p => p.transactionCode === code);
+            const payment = allPayments.find(p => 
+                p.transactionReference === code || p.transactionCode === code
+            );
             
             if (payment) {
                 if (payment.status === 'verified') {
                     document.getElementById('manualVerificationResult').innerHTML = 
                         `<div class="alert alert-success">
                             <i class="bi bi-check-circle-fill"></i> Already Verified<br><br>
-                            <strong>Customer:</strong> ${payment.customerName}<br>
+                            <strong>Customer:</strong> ${payment.fullName || payment.customerName}<br>
                             <strong>Amount:</strong> KES ${payment.amount.toLocaleString()}<br>
                             <strong>Date:</strong> ${new Date(payment.date).toLocaleDateString()}<br>
                             <strong>Status:</strong> <span class="badge bg-success">VERIFIED</span>
@@ -1476,7 +1652,7 @@ Kalenjin Vibes Team`;
                     document.getElementById('manualVerificationResult').innerHTML = 
                         `<div class="alert alert-warning">
                             <i class="bi bi-clock-history"></i> Payment Pending<br><br>
-                            <strong>Customer:</strong> ${payment.customerName}<br>
+                            <strong>Customer:</strong> ${payment.fullName || payment.customerName}<br>
                             <strong>Amount:</strong> KES ${payment.amount.toLocaleString()}<br>
                             <button class="btn btn-sm btn-success mt-2" onclick="verifyPayment('${payment.id}')">
                                 <i class="bi bi-check"></i> Verify Now
@@ -1486,9 +1662,9 @@ Kalenjin Vibes Team`;
                     document.getElementById('manualVerificationResult').innerHTML = 
                         `<div class="alert alert-danger">
                             <i class="bi bi-x-circle-fill"></i> Payment Rejected<br><br>
-                            <strong>Customer:</strong> ${payment.customerName}<br>
+                            <strong>Customer:</strong> ${payment.fullName || payment.customerName}<br>
                             <strong>Amount:</strong> KES ${payment.amount.toLocaleString()}<br>
-                            <button class="btn btn-sm btn-warning mt-2" onclick="payment.status='pending'; saveToCache(allPayments); location.reload();">
+                            <button class="btn btn-sm btn-warning mt-2" onclick="payment.status='pending'; location.reload();">
                                 <i class="bi bi-arrow-clockwise"></i> Mark as Pending
                             </button>
                         </div>`;
@@ -1503,90 +1679,22 @@ Kalenjin Vibes Team`;
             }
         }
 
-        // Cash payment
+        // Cash payment modal
         function openAddManualPayment() {
-            // Clear form
             document.getElementById('cashCustomerName').value = '';
             document.getElementById('cashPhoneNumber').value = '';
             document.getElementById('cashEmail').value = '';
             document.getElementById('cashAmount').value = '';
-            
             new bootstrap.Modal(document.getElementById('addCashPaymentModal')).show();
         }
 
-        function saveCashPayment() {
-            const name = document.getElementById('cashCustomerName').value.trim();
-            const phone = document.getElementById('cashPhoneNumber').value.trim();
-            const email = document.getElementById('cashEmail').value.trim();
-            const amount = parseInt(document.getElementById('cashAmount').value);
-            
-            if (!name) {
-                alert('Please enter customer name');
-                return;
-            }
-            
-            if (!phone) {
-                alert('Please enter phone number');
-                return;
-            }
-            
-            if (!amount || amount <= 0) {
-                alert('Please enter a valid amount');
-                return;
-            }
-            
-            // Generate unique transaction code
-            const transactionCode = 'CASH' + Date.now().toString().slice(-6) + Math.random().toString(36).substr(2, 4).toUpperCase();
-            
-            const payment = {
-                id: Date.now().toString(),
-                transactionCode: transactionCode,
-                customerName: name,
-                phone: phone,
-                email: email,
-                amount: amount,
-                method: 'CASH',
-                status: 'verified',
-                attended: false,
-                date: new Date().toISOString(),
-                verifiedDate: new Date().toISOString()
-            };
-            
-            // Add to payments
-            allPayments.unshift(payment);
-            
-            // Save to cache
-            saveToCache(allPayments);
-            
-            // Update UI
-            updateDashboardStats();
-            loadRecentActivity();
-            loadPaymentsTable();
-            
-            showSuccess('Cash payment added and verified successfully!');
-            
-            // Close modal
-            const modal = bootstrap.Modal.getInstance(document.getElementById('addCashPaymentModal'));
-            if (modal) modal.hide();
-            
-            // Prepare to send QR code
-            currentQRPayment = payment;
-            setTimeout(() => {
-                prepareQRForSending(payment.id);
-            }, 500);
-        }
-
-        // Utility functions
-        function showSuccess(message) {
-            document.getElementById('successMessage').textContent = message;
-            new bootstrap.Modal(document.getElementById('successModal')).show();
-        }
-
+        // Quick actions menu
         function toggleQuickActions() {
             const menu = document.getElementById('quickActionsMenu');
             menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
         }
 
+        // Event listeners
         function setupEventListeners() {
             document.addEventListener('click', function(e) {
                 const sidebar = document.getElementById('sidebar');
@@ -1606,14 +1714,39 @@ Kalenjin Vibes Team`;
             });
         }
 
-        function logout() {
-            if (confirm('Are you sure you want to logout?')) {
-                // Clear sensitive data from memory
-                allPayments = [];
-                currentQRPayment = null;
-                window.location.href = 'login.html';
-            }
+        function initializeDashboard() {
+            document.getElementById('sidebarToggle')?.addEventListener('click', function() {
+                document.getElementById('sidebar').classList.toggle('active');
+            });
         }
+
+        // Expose functions to global scope
+        window.showSection = showSection;
+        window.showAllPaymentsModal = showAllPaymentsModal;
+        window.showPendingModal = showPendingModal;
+        window.showVerifiedTodayModal = showVerifiedTodayModal;
+        window.showAllVerifiedModal = showAllVerifiedModal;
+        window.filterPayments = filterPayments;
+        window.filterAllPayments = filterAllPayments;
+        window.filterVerifiedPayments = filterVerifiedPayments;
+        window.openQrScanner = openQrScanner;
+        window.openManualVerification = openManualVerification;
+        window.openAddManualPayment = openAddManualPayment;
+        window.verifyFromMessage = verifyFromMessage;
+        window.manualVerifyPayment = manualVerifyPayment;
+        window.verifyPayment = verifyPayment;
+        window.rejectPayment = rejectPayment;
+        window.saveCashPayment = saveCashPayment;
+        window.prepareQRForSending = prepareQRForSending;
+        window.sendQRByEmail = sendQRByEmail;
+        window.downloadQRTicket = downloadQRTicket;
+        window.copyQRCode = copyQRCode;
+        window.refreshData = refreshData;
+        window.logout = logout;
+        window.toggleQuickActions = toggleQuickActions;
+
+        console.log('✅ Production-ready Admin Dashboard Loaded');
+
     </script>
 </body>
 </html>
