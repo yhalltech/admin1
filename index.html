@@ -9,7 +9,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <style>
         :root {
             --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -97,7 +98,6 @@
         .badge-pending { background: var(--warning-gradient); color: #000; }
         .badge-verified { background: var(--success-gradient); color: white; }
         .badge-rejected { background: var(--danger-gradient); color: white; }
-        .badge-attended { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
         
         .action-btn {
             padding: 10px 20px;
@@ -113,8 +113,8 @@
         
         .btn-verify { background: var(--success-gradient); color: white; }
         .btn-reject { background: var(--danger-gradient); color: white; }
-        .btn-email { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
         .btn-scan { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; }
+        .btn-pdf { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
         
         .action-btn:hover {
             transform: scale(1.05);
@@ -163,7 +163,6 @@
         .payment-card.pending { border-left-color: #fa709a; }
         .payment-card.verified { border-left-color: #43e97b; }
         .payment-card.rejected { border-left-color: #f83600; }
-        .payment-card.attended { border-left-color: #4facfe; }
         
         .modal-content {
             background: var(--card-bg);
@@ -205,16 +204,6 @@
             width: 100%;
             border-radius: 20px;
             overflow: hidden;
-        }
-        
-        .ticket-design {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
-            padding: 30px;
-            color: white;
-            text-align: center;
-            max-width: 400px;
-            margin: 0 auto;
         }
         
         .search-container {
@@ -271,6 +260,34 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+        
+        .ticket-type-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .early-bird-badge {
+            background: #FF6B6B;
+            color: white;
+        }
+        
+        .early-bird-couples-badge {
+            background: #4ECDC4;
+            color: white;
+        }
+        
+        .couples-badge {
+            background: #FFD166;
+            color: black;
+        }
+        
+        .regular-badge {
+            background: #06D6A0;
+            color: white;
         }
         
         @media (max-width: 768px) {
@@ -346,11 +363,6 @@
                         <i class="bi bi-credit-card me-2"></i> Payments
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link text-white" href="#" onclick="showSection('qr-management')">
-                        <i class="bi bi-qr-code me-2"></i> QR Management
-                    </a>
-                </li>
                 <li class="nav-item mt-4">
                     <a class="nav-link text-white" href="#" onclick="refreshData()">
                         <i class="bi bi-arrow-clockwise me-2"></i> Refresh Data
@@ -378,12 +390,12 @@
             <!-- Stats Row -->
             <div class="row mb-4">
                 <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="stat-card p-4" onclick="showAllPaymentsModal()">
+                    <div class="stat-card p-4">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="text-light">Total Revenue</h6>
                                 <h2 class="text-success" id="totalRevenue">KES 0</h2>
-                                <small class="text-success">Click to view all</small>
+                                <small class="text-success">All payments</small>
                             </div>
                             <div class="rounded-circle p-3" style="background: var(--success-gradient);">
                                 <i class="bi bi-cash-stack text-white fs-4"></i>
@@ -408,12 +420,12 @@
                 </div>
                 
                 <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="stat-card p-4" onclick="showVerifiedTodayModal()">
+                    <div class="stat-card p-4">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="text-light">Verified Today</h6>
                                 <h2 class="text-success" id="verifiedToday">0</h2>
-                                <small class="text-success">Click to view</small>
+                                <small class="text-success">Today's verified</small>
                             </div>
                             <div class="rounded-circle p-3" style="background: var(--success-gradient);">
                                 <i class="bi bi-check-circle text-white fs-4"></i>
@@ -423,15 +435,78 @@
                 </div>
                 
                 <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="stat-card p-4" onclick="showAllVerifiedModal()">
+                    <div class="stat-card p-4">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="text-light">All Verified</h6>
                                 <h2 class="text-info" id="allVerifiedCount">0</h2>
-                                <small class="text-info">Click to view</small>
+                                <small class="text-info">Total verified</small>
                             </div>
                             <div class="rounded-circle p-3" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
                                 <i class="bi bi-check-all text-white fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Ticket Type Statistics -->
+            <div class="row mb-4">
+                <div class="col-md-3 col-6 mb-4">
+                    <div class="stat-card p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-light">Early Bird</h6>
+                                <h2 class="text-warning" id="earlyBirdCount">0</h2>
+                                <small class="text-warning">KES 350</small>
+                            </div>
+                            <div class="rounded-circle p-2" style="background: var(--warning-gradient);">
+                                <i class="bi bi-ticket text-white"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3 col-6 mb-4">
+                    <div class="stat-card p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-light">Early Bird Couples</h6>
+                                <h2 class="text-info" id="earlyBirdCouplesCount">0</h2>
+                                <small class="text-info">KES 650</small>
+                            </div>
+                            <div class="rounded-circle p-2" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                <i class="bi bi-heart text-white"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3 col-6 mb-4">
+                    <div class="stat-card p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-light">Couples Ticket</h6>
+                                <h2 class="text-danger" id="couplesCount">0</h2>
+                                <small class="text-danger">KES 700</small>
+                            </div>
+                            <div class="rounded-circle p-2" style="background: var(--danger-gradient);">
+                                <i class="bi bi-people text-white"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3 col-6 mb-4">
+                    <div class="stat-card p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-light">Regular Ticket</h6>
+                                <h2 class="text-success" id="regularCount">0</h2>
+                                <small class="text-success">KES 400</small>
+                            </div>
+                            <div class="rounded-circle p-2" style="background: var(--success-gradient);">
+                                <i class="bi bi-ticket-perforated text-white"></i>
                             </div>
                         </div>
                     </div>
@@ -453,6 +528,9 @@
                             <button class="action-btn" style="background: var(--primary-gradient); color: white;" 
                                     onclick="openAddManualPayment()">
                                 <i class="bi bi-plus-circle"></i> Add Cash Payment
+                            </button>
+                            <button class="action-btn btn-pdf" onclick="generateVerifiedPDF()">
+                                <i class="bi bi-file-pdf"></i> Generate Verified PDF
                             </button>
                         </div>
                     </div>
@@ -494,9 +572,14 @@
         <div id="payments" style="display: none;">
             <h1 class="gradient-text mb-4"><i class="bi bi-credit-card me-2"></i> Payment Management</h1>
             <div class="glass-card p-4">
-                <div class="search-container">
-                    <i class="bi bi-search search-icon"></i>
-                    <input type="text" class="search-input" id="paymentSearch" placeholder="Search by name, phone, or transaction code..." onkeyup="filterPayments()">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="search-container flex-grow-1 me-3">
+                        <i class="bi bi-search search-icon"></i>
+                        <input type="text" class="search-input" id="paymentSearch" placeholder="Search by name, phone, email, or transaction code..." onkeyup="filterPayments()">
+                    </div>
+                    <button class="action-btn btn-pdf" onclick="generateVerifiedPDF()">
+                        <i class="bi bi-file-pdf"></i> Export Verified PDF
+                    </button>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-dark table-hover">
@@ -504,7 +587,9 @@
                             <tr>
                                 <th>Transaction</th>
                                 <th>Customer</th>
+                                <th>Email</th>
                                 <th>Amount</th>
+                                <th>Ticket Type</th>
                                 <th>Status</th>
                                 <th>Date</th>
                                 <th>Actions</th>
@@ -512,21 +597,11 @@
                         </thead>
                         <tbody id="paymentsTable">
                             <tr>
-                                <td colspan="6" class="text-center py-4">Loading...</td>
+                                <td colspan="8" class="text-center py-4">Loading...</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-            </div>
-        </div>
-
-        <div id="qr-management" style="display: none;">
-            <h1 class="gradient-text mb-4"><i class="bi bi-qr-code me-2"></i> QR Management</h1>
-            <div class="glass-card p-4">
-                <button class="action-btn btn-scan mb-3" onclick="openQrScanner()">
-                    <i class="bi bi-qr-code-scan"></i> Scan QR Code
-                </button>
-                <div id="qrScanHistory"></div>
             </div>
         </div>
     </div>
@@ -549,25 +624,6 @@
         </div>
     </div>
 
-    <!-- All Payments Modal -->
-    <div class="modal fade" id="allPaymentsModal" tabindex="-1">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title text-white"><i class="bi bi-cash-stack me-2"></i> All Payments</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="search-container mb-3">
-                        <i class="bi bi-search search-icon"></i>
-                        <input type="text" class="search-input" id="allPaymentsSearch" placeholder="Search payments..." onkeyup="filterAllPayments()">
-                    </div>
-                    <div id="allPaymentsContent"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Pending Modal -->
     <div class="modal fade" id="pendingModal" tabindex="-1">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -578,40 +634,6 @@
                 </div>
                 <div class="modal-body">
                     <div id="pendingModalContent"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Verified Today Modal -->
-    <div class="modal fade" id="verifiedTodayModal" tabindex="-1">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title text-white"><i class="bi bi-check-circle me-2"></i> Verified Today</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="verifiedTodayContent"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- All Verified Modal -->
-    <div class="modal fade" id="allVerifiedModal" tabindex="-1">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title text-white"><i class="bi bi-check-all me-2"></i> All Verified Payments</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="search-container mb-3">
-                        <i class="bi bi-search search-icon"></i>
-                        <input type="text" class="search-input" id="verifiedSearch" placeholder="Search verified payments..." onkeyup="filterVerifiedPayments()">
-                    </div>
-                    <div id="allVerifiedContent"></div>
                 </div>
             </div>
         </div>
@@ -635,12 +657,22 @@
                         <input type="text" class="form-control bg-dark text-light" id="cashPhoneNumber" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-light">Email</label>
-                        <input type="email" class="form-control bg-dark text-light" id="cashEmail">
+                        <label class="form-label text-light">Email *</label>
+                        <input type="email" class="form-control bg-dark text-light" id="cashEmail" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-light">Amount (KES) *</label>
                         <input type="number" class="form-control bg-dark text-light" id="cashAmount" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-light">Ticket Type *</label>
+                        <select class="form-control bg-dark text-light" id="cashTicketType" required>
+                            <option value="">Select ticket type</option>
+                            <option value="Early Bird Ticket">Early Bird Ticket (KES 350)</option>
+                            <option value="Early Bird Couples">Early Bird Couples (KES 650)</option>
+                            <option value="Couples Ticket">Couples Ticket (KES 700)</option>
+                            <option value="Regular Ticket">Regular Ticket (KES 400)</option>
+                        </select>
                     </div>
                     <button class="action-btn w-100" style="background: var(--primary-gradient); color: white;" 
                             onclick="saveCashPayment()">
@@ -689,40 +721,6 @@
         </div>
     </div>
 
-    <!-- Send QR Modal -->
-    <div class="modal fade" id="sendQRModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title text-white"><i class="bi bi-qr-code me-2"></i> Send QR Code</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="qrPreviewContainer">
-                        <!-- QR preview will be generated here -->
-                    </div>
-                    <div class="mt-4">
-                        <label class="form-label text-light">Email Message (Edit if needed)</label>
-                        <textarea class="form-control bg-dark text-light" id="emailMessage" rows="6"></textarea>
-                    </div>
-                    <div class="mt-4 d-flex gap-3 flex-wrap">
-                        <button class="action-btn btn-email" onclick="sendQRByEmail()">
-                            <i class="bi bi-envelope"></i> Send via Email
-                        </button>
-                        <button class="action-btn" style="background: var(--primary-gradient); color: white;" 
-                                onclick="downloadQRTicket()">
-                            <i class="bi bi-download"></i> Download Ticket
-                        </button>
-                        <button class="action-btn" style="background: var(--warning-gradient); color: white;" 
-                                onclick="copyQRCode()">
-                            <i class="bi bi-clipboard"></i> Copy QR Code
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Floating Action Button -->
     <button class="floating-action-btn" onclick="toggleQuickActions()">
         <i class="bi bi-plus"></i>
@@ -739,6 +737,9 @@
         <button class="action-btn" style="background: var(--primary-gradient); color: white;" onclick="openAddManualPayment()">
             <i class="bi bi-cash"></i> Add Cash
         </button>
+        <button class="action-btn btn-pdf w-100 mt-2" onclick="generateVerifiedPDF()">
+            <i class="bi bi-file-pdf"></i> Generate PDF
+        </button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -747,7 +748,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-        import { getFirestore, collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, query, orderBy, where } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
         // Firebase Configuration
         const firebaseConfig = {
@@ -766,9 +767,9 @@
 
         // Global variables
         let allPayments = [];
-        let currentQRPayment = null;
         let html5QrCode = null;
         let adminData = null;
+        const { jsPDF } = window.jspdf;
 
         // Check authentication
         onAuthStateChanged(auth, async (user) => {
@@ -821,7 +822,8 @@
                         id: doc.id,
                         ...paymentData,
                         date: paymentData.createdAt?.toDate() || new Date(),
-                        amount: parseFloat(paymentData.amount) || 0
+                        amount: parseFloat(paymentData.amount) || 0,
+                        ticketType: paymentData.ticketType || determineTicketType(paymentData.amount)
                     });
                 });
                 
@@ -846,6 +848,16 @@
             }
         }
 
+        // Determine ticket type based on amount
+        function determineTicketType(amount) {
+            const amt = parseFloat(amount);
+            if (amt === 350) return "Early Bird Ticket";
+            if (amt === 650) return "Early Bird Couples";
+            if (amt === 700) return "Couples Ticket";
+            if (amt === 400) return "Regular Ticket";
+            return "Unknown";
+        }
+
         // Update dashboard statistics
         function updateDashboardStats() {
             const total = allPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -855,11 +867,21 @@
                 p.status === 'verified' && new Date(p.date).toDateString() === today
             ).length;
             const allVerified = allPayments.filter(p => p.status === 'verified').length;
+            
+            // Ticket type counts for verified payments only
+            const earlyBirdCount = allPayments.filter(p => p.status === 'verified' && p.ticketType === 'Early Bird Ticket').length;
+            const earlyBirdCouplesCount = allPayments.filter(p => p.status === 'verified' && p.ticketType === 'Early Bird Couples').length;
+            const couplesCount = allPayments.filter(p => p.status === 'verified' && p.ticketType === 'Couples Ticket').length;
+            const regularCount = allPayments.filter(p => p.status === 'verified' && p.ticketType === 'Regular Ticket').length;
 
             document.getElementById('totalRevenue').textContent = `KES ${total.toLocaleString()}`;
             document.getElementById('pendingCount').textContent = pending;
             document.getElementById('verifiedToday').textContent = verifiedToday;
             document.getElementById('allVerifiedCount').textContent = allVerified;
+            document.getElementById('earlyBirdCount').textContent = earlyBirdCount;
+            document.getElementById('earlyBirdCouplesCount').textContent = earlyBirdCouplesCount;
+            document.getElementById('couplesCount').textContent = couplesCount;
+            document.getElementById('regularCount').textContent = regularCount;
         }
 
         // Load recent activity
@@ -882,13 +904,18 @@
                                 payment.status === 'rejected' ? 'x-circle text-danger' :
                                 'circle text-info';
                     
+                    const ticketTypeClass = getTicketTypeClass(payment.ticketType);
+                    
                     html += `
                         <div class="d-flex justify-content-between align-items-center border-bottom border-secondary pb-3 mb-3">
                             <div class="d-flex align-items-center">
                                 <i class="bi bi-${icon} fs-4 me-3"></i>
                                 <div>
                                     <h6 class="mb-0 text-light">${payment.fullName || payment.customerName || 'Customer'}</h6>
-                                    <small class="text-muted">${payment.paymentMethod || 'Unknown'} • ${payment.status}</small>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <small class="text-muted">${payment.paymentMethod || 'Unknown'}</small>
+                                        <span class="ticket-type-badge ${ticketTypeClass}">${payment.ticketType}</span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="text-end">
@@ -903,6 +930,17 @@
             document.getElementById('recentActivity').innerHTML = html;
         }
 
+        // Get ticket type CSS class
+        function getTicketTypeClass(ticketType) {
+            switch(ticketType) {
+                case 'Early Bird Ticket': return 'early-bird-badge';
+                case 'Early Bird Couples': return 'early-bird-couples-badge';
+                case 'Couples Ticket': return 'couples-badge';
+                case 'Regular Ticket': return 'regular-badge';
+                default: return '';
+            }
+        }
+
         // Load payments table
         function loadPaymentsTable() {
             const tableBody = document.getElementById('paymentsTable');
@@ -911,7 +949,7 @@
             if (allPayments.length === 0) {
                 html = `
                     <tr>
-                        <td colspan="6" class="text-center py-5">
+                        <td colspan="8" class="text-center py-5">
                             <i class="bi bi-inbox fs-1 text-muted"></i>
                             <p class="text-muted mt-2">No payments found</p>
                         </td>
@@ -923,6 +961,8 @@
                                        p.status === 'pending' ? 'badge-pending' :
                                        p.status === 'rejected' ? 'badge-rejected' : '';
                     
+                    const ticketTypeClass = getTicketTypeClass(p.ticketType);
+                    
                     html += `
                         <tr>
                             <td>
@@ -933,15 +973,19 @@
                                 ${p.fullName || p.customerName || 'Customer'}<br>
                                 <small class="text-muted">${p.phoneNumber || p.phone || 'N/A'}</small>
                             </td>
+                            <td>
+                                ${p.email || 'No email'}
+                            </td>
                             <td class="text-light">KES ${p.amount.toLocaleString()}</td>
+                            <td>
+                                <span class="ticket-type-badge ${ticketTypeClass}">
+                                    ${p.ticketType}
+                                </span>
+                            </td>
                             <td><span class="status-badge ${statusBadge}">${p.status}</span></td>
                             <td>${new Date(p.date).toLocaleDateString()}</td>
                             <td>
-                                ${p.status === 'verified' ? `
-                                    <button class="btn btn-sm btn-info" onclick="prepareQRForSending('${p.id}')">
-                                        <i class="bi bi-qr-code"></i> QR
-                                    </button>
-                                ` : p.status === 'pending' ? `
+                                ${p.status === 'pending' ? `
                                     <button class="btn btn-sm btn-success me-1" onclick="verifyPayment('${p.id}')">
                                         <i class="bi bi-check"></i>
                                     </button>
@@ -961,6 +1005,9 @@
         // Verify payment
         async function verifyPayment(id) {
             try {
+                const payment = allPayments.find(p => p.id === id);
+                if (!payment) return;
+
                 const paymentRef = doc(db, "payments", id);
                 await updateDoc(paymentRef, {
                     status: 'verified',
@@ -1027,6 +1074,7 @@
             const phone = document.getElementById('cashPhoneNumber').value.trim();
             const email = document.getElementById('cashEmail').value.trim();
             const amount = parseFloat(document.getElementById('cashAmount').value);
+            const ticketType = document.getElementById('cashTicketType').value;
             
             if (!name) {
                 alert('Please enter customer name');
@@ -1038,8 +1086,18 @@
                 return;
             }
             
+            if (!email) {
+                alert('Please enter email address');
+                return;
+            }
+            
             if (!amount || amount <= 0) {
                 alert('Please enter a valid amount');
+                return;
+            }
+            
+            if (!ticketType) {
+                alert('Please select ticket type');
                 return;
             }
             
@@ -1055,6 +1113,7 @@
                     amount: amount,
                     paymentMethod: 'CASH',
                     transactionReference: transactionCode,
+                    ticketType: ticketType,
                     status: 'verified',
                     bookingType: 'cash',
                     createdAt: serverTimestamp(),
@@ -1071,6 +1130,7 @@
                     amount: amount,
                     paymentMethod: 'CASH',
                     transactionReference: transactionCode,
+                    ticketType: ticketType,
                     status: 'verified',
                     date: new Date(),
                     verifiedDate: new Date()
@@ -1089,16 +1149,100 @@
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addCashPaymentModal'));
                 if (modal) modal.hide();
                 
-                // Prepare to send QR code
-                currentQRPayment = newPayment;
-                setTimeout(() => {
-                    prepareQRForSending(newPayment.id);
-                }, 500);
-                
             } catch (error) {
                 console.error('Error saving cash payment:', error);
                 showError('Failed to save cash payment. Please try again.');
             }
+        }
+
+        // Generate PDF for all verified payments
+        function generateVerifiedPDF() {
+            const verifiedPayments = allPayments
+                .filter(p => p.status === 'verified')
+                .sort((a, b) => (a.fullName || a.customerName || '').localeCompare(b.fullName || b.customerName || ''));
+            
+            if (verifiedPayments.length === 0) {
+                alert('No verified payments available for PDF generation');
+                return;
+            }
+            
+            // Create PDF
+            const pdf = new jsPDF();
+            
+            // Title
+            pdf.setFontSize(20);
+            pdf.setTextColor(0, 0, 0);
+            pdf.text('Kalenjin Vibes Festival - Verified Attendees', 20, 20);
+            
+            pdf.setFontSize(12);
+            pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
+            pdf.text(`Total Verified: ${verifiedPayments.length}`, 20, 40);
+            
+            // Calculate total amount
+            const totalAmount = verifiedPayments.reduce((sum, p) => sum + p.amount, 0);
+            pdf.text(`Total Revenue: KES ${totalAmount.toLocaleString()}`, 20, 50);
+            
+            // Ticket type summary
+            let yPos = 70;
+            pdf.setFontSize(14);
+            pdf.text('Ticket Type Summary:', 20, yPos);
+            yPos += 10;
+            
+            const ticketTypes = {};
+            verifiedPayments.forEach(p => {
+                ticketTypes[p.ticketType] = (ticketTypes[p.ticketType] || 0) + 1;
+            });
+            
+            pdf.setFontSize(11);
+            for (const [type, count] of Object.entries(ticketTypes)) {
+                pdf.text(`${type}: ${count}`, 25, yPos);
+                yPos += 7;
+            }
+            
+            yPos += 10;
+            
+            // Table headers
+            pdf.setFontSize(12);
+            pdf.setFont(undefined, 'bold');
+            
+            const headers = [['No.', 'Name', 'Email', 'Phone', 'Ticket Type', 'Amount', 'Transaction Code', 'Date']];
+            
+            // Table data
+            const tableData = verifiedPayments.map((payment, index) => [
+                (index + 1).toString(),
+                payment.fullName || payment.customerName || 'Customer',
+                payment.email || 'No email',
+                payment.phoneNumber || payment.phone || 'N/A',
+                payment.ticketType || 'Unknown',
+                `KES ${payment.amount.toLocaleString()}`,
+                payment.transactionReference || payment.transactionCode || 'N/A',
+                new Date(payment.date).toLocaleDateString()
+            ]);
+            
+            // Generate table
+            pdf.autoTable({
+                startY: yPos,
+                head: headers,
+                body: tableData,
+                theme: 'grid',
+                headStyles: { fillColor: [102, 126, 234] },
+                styles: { fontSize: 9 },
+                columnStyles: {
+                    0: { cellWidth: 10 },
+                    1: { cellWidth: 30 },
+                    2: { cellWidth: 35 },
+                    3: { cellWidth: 25 },
+                    4: { cellWidth: 25 },
+                    5: { cellWidth: 20 },
+                    6: { cellWidth: 25 },
+                    7: { cellWidth: 20 }
+                },
+                margin: { left: 10, right: 10 }
+            });
+            
+            // Save PDF
+            pdf.save(`Kalenjin_Verified_Attendees_${new Date().toISOString().split('T')[0]}.pdf`);
+            showSuccess('PDF generated successfully!');
         }
 
         // Show success message
@@ -1147,7 +1291,7 @@
 
         // Section navigation
         function showSection(sectionId) {
-            ['dashboard', 'verification', 'payments', 'qr-management'].forEach(id => {
+            ['dashboard', 'verification', 'payments'].forEach(id => {
                 document.getElementById(id).style.display = 'none';
             });
             document.getElementById(sectionId).style.display = 'block';
@@ -1174,49 +1318,7 @@
             });
         }
 
-        function filterAllPayments() {
-            const searchTerm = document.getElementById('allPaymentsSearch').value.toLowerCase();
-            const rows = document.querySelectorAll('#allPaymentsContent tr');
-            
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(searchTerm) ? '' : 'none';
-            });
-        }
-
-        function filterVerifiedPayments() {
-            const searchTerm = document.getElementById('verifiedSearch').value.toLowerCase();
-            const cards = document.querySelectorAll('#allVerifiedContent .payment-card');
-            
-            cards.forEach(card => {
-                const text = card.textContent.toLowerCase();
-                card.style.display = text.includes(searchTerm) ? '' : 'none';
-            });
-        }
-
         // Modal functions
-        function showAllPaymentsModal() {
-            let html = '<div class="table-responsive"><table class="table table-dark">';
-            html += '<thead><tr><th>Customer</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>';
-            
-            if (allPayments.length === 0) {
-                html += `<tr><td colspan="4" class="text-center py-4 text-muted">No payments found</td></tr>`;
-            } else {
-                allPayments.forEach(p => {
-                    html += `<tr>
-                        <td>${p.fullName || p.customerName || 'Customer'}<br><small>${p.phoneNumber || p.phone || 'N/A'}</small></td>
-                        <td>KES ${p.amount.toLocaleString()}</td>
-                        <td><span class="status-badge badge-${p.status}">${p.status}</span></td>
-                        <td>${new Date(p.date).toLocaleDateString()}</td>
-                    </tr>`;
-                });
-            }
-            
-            html += '</tbody></table></div>';
-            document.getElementById('allPaymentsContent').innerHTML = html;
-            new bootstrap.Modal(document.getElementById('allPaymentsModal')).show();
-        }
-
         function showPendingModal() {
             const pending = allPayments.filter(p => p.status === 'pending');
             let html = '';
@@ -1225,14 +1327,16 @@
                 html = '<div class="text-center py-5"><i class="bi bi-check-circle fs-1 text-success"></i><p class="text-light mt-3">No pending payments</p></div>';
             } else {
                 pending.forEach(p => {
+                    const ticketTypeClass = getTicketTypeClass(p.ticketType);
+                    
                     html += `
                         <div class="payment-card pending">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
                                     <h6 class="text-light">${p.fullName || p.customerName || 'Customer'}</h6>
                                     <p class="text-muted mb-1">${p.transactionReference || p.transactionCode || 'N/A'}</p>
-                                    <p class="text-light mb-1">KES ${p.amount.toLocaleString()}</p>
-                                    <small class="text-muted">${p.phoneNumber || p.phone || 'N/A'}</small>
+                                    <p class="text-light mb-1">KES ${p.amount.toLocaleString()} <span class="ticket-type-badge ${ticketTypeClass}">${p.ticketType}</span></p>
+                                    <small class="text-muted">${p.phoneNumber || p.phone || 'N/A'} • ${p.email || 'No email'}</small>
                                 </div>
                                 <div class="d-flex flex-column gap-2">
                                     <button class="btn btn-sm btn-success" onclick="verifyPayment('${p.id}')">
@@ -1250,270 +1354,6 @@
             
             document.getElementById('pendingModalContent').innerHTML = html;
             new bootstrap.Modal(document.getElementById('pendingModal')).show();
-        }
-
-        function showVerifiedTodayModal() {
-            const today = new Date().toDateString();
-            const verified = allPayments.filter(p => 
-                p.status === 'verified' && new Date(p.date).toDateString() === today
-            );
-            
-            let html = '';
-            if (verified.length === 0) {
-                html = '<div class="text-center py-5"><i class="bi bi-calendar-check fs-1 text-muted"></i><p class="text-light mt-3">No verifications today</p></div>';
-            } else {
-                verified.forEach(p => {
-                    html += `
-                        <div class="payment-card verified">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="text-light">${p.fullName || p.customerName || 'Customer'}</h6>
-                                    <p class="text-muted mb-1">${p.transactionReference || p.transactionCode || 'N/A'} • ${p.paymentMethod || 'N/A'}</p>
-                                    <p class="text-light">KES ${p.amount.toLocaleString()}</p>
-                                </div>
-                                <button class="btn btn-sm btn-info" onclick="prepareQRForSending('${p.id}')">
-                                    <i class="bi bi-qr-code me-1"></i> Send QR
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-            
-            document.getElementById('verifiedTodayContent').innerHTML = html;
-            new bootstrap.Modal(document.getElementById('verifiedTodayModal')).show();
-        }
-
-        function showAllVerifiedModal() {
-            const verified = allPayments.filter(p => p.status === 'verified');
-            let html = '';
-            
-            if (verified.length === 0) {
-                html = '<div class="text-center py-5"><i class="bi bi-check-circle fs-1 text-muted"></i><p class="text-light mt-3">No verified payments</p></div>';
-            } else {
-                verified.forEach(p => {
-                    html += `
-                        <div class="payment-card verified">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="text-light">${p.fullName || p.customerName || 'Customer'}</h6>
-                                    <p class="text-muted mb-1">${p.email || 'No email'} • ${p.phoneNumber || p.phone || 'N/A'}</p>
-                                    <p class="text-light mb-1">KES ${p.amount.toLocaleString()} • ${p.transactionReference || p.transactionCode || 'N/A'}</p>
-                                    <small class="text-muted">${new Date(p.date).toLocaleDateString()}</small>
-                                </div>
-                                <button class="btn btn-sm btn-info" onclick="prepareQRForSending('${p.id}')">
-                                    <i class="bi bi-envelope"></i> Send QR
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-            
-            document.getElementById('allVerifiedContent').innerHTML = html;
-            new bootstrap.Modal(document.getElementById('allVerifiedModal')).show();
-        }
-
-        // QR Code Generation and Sending
-        async function prepareQRForSending(paymentId) {
-            const payment = allPayments.find(p => p.id === paymentId);
-            if (!payment) {
-                alert('Payment not found');
-                return;
-            }
-            
-            currentQRPayment = payment;
-            
-            // Generate QR code data
-            const qrData = JSON.stringify({
-                transactionCode: payment.transactionReference || payment.transactionCode,
-                customerName: payment.fullName || payment.customerName,
-                amount: payment.amount,
-                date: payment.date,
-                event: "Kalenjin Vibes Festival",
-                venue: "Winter Villa Resort & Spa, Embu",
-                type: payment.amount >= 3000 ? "VIP" : "Regular"
-            });
-            
-            // Generate QR code
-            const qrImage = await generateQRCode(qrData);
-            
-            // Create ticket design with QR code
-            const ticketHtml = createTicketHTML(payment, qrImage);
-            
-            // Set QR preview
-            document.getElementById('qrPreviewContainer').innerHTML = ticketHtml;
-            
-            // Set email message
-            const eventDate = new Date();
-            eventDate.setDate(eventDate.getDate() + 14); // Event in 2 weeks
-            
-            const emailMessage = `Dear ${payment.fullName || payment.customerName},
-
-Your payment of KES ${payment.amount.toLocaleString()} has been verified and confirmed.
-
-TRANSACTION DETAILS:
-📅 Payment Date: ${new Date(payment.date).toLocaleDateString()}
-💰 Amount: KES ${payment.amount.toLocaleString()}
-📝 Transaction Code: ${payment.transactionReference || payment.transactionCode}
-💳 Method: ${payment.paymentMethod || 'Manual'}
-
-EVENT INFORMATION:
-🎵 Event: Kalenjin Vibes Festival
-📅 Date: ${eventDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-⏰ Time: 2:00 PM - Midnight
-📍 Venue: Winter Villa Resort & Spa, Embu
-🎟️ Ticket Type: ${payment.amount >= 3000 ? 'VIP' : 'Regular'} Admission
-
-Your QR code ticket is attached. Please present it at the entrance.
-
-IMPORTANT NOTES:
-• This QR code is unique to you and cannot be transferred
-• Please arrive at least 30 minutes before the event starts
-• Bring valid ID matching the name on the ticket
-• No refunds or exchanges allowed
-
-For inquiries, contact: support@kalenjinvibes.co.ke
-
-We look forward to seeing you at the festival!
-
-Best regards,
-Kalenjin Vibes Team`;
-
-            document.getElementById('emailMessage').value = emailMessage;
-            
-            // Show modal
-            new bootstrap.Modal(document.getElementById('sendQRModal')).show();
-        }
-
-        async function generateQRCode(data) {
-            return new Promise((resolve) => {
-                const canvas = document.createElement('canvas');
-                QRCode.toCanvas(canvas, data, {
-                    width: 300,
-                    margin: 1,
-                    color: {
-                        dark: '#000000',
-                        light: '#FFFFFF'
-                    }
-                }, function(error) {
-                    if (error) {
-                        console.error('QR generation error:', error);
-                        // Fallback to simple div
-                        resolve('<div style="width:300px;height:300px;background:#fff;color:#000;display:flex;align-items:center;justify-content:center;border-radius:10px;"><div style="text-align:center;"><div style="font-size:48px;">🎫</div><div>Ticket: ' + currentQRPayment.transactionReference + '</div></div></div>');
-                    } else {
-                        resolve(canvas.toDataURL('image/png'));
-                    }
-                });
-            });
-        }
-
-        function createTicketHTML(payment, qrImage) {
-            const eventDate = new Date();
-            eventDate.setDate(eventDate.getDate() + 14);
-            
-            return `
-                <div class="ticket-design" id="ticketDesign">
-                    <h3 class="mb-3">🎵 Kalenjin Vibes Festival</h3>
-                    <div class="mb-4">
-                        <h5>${payment.fullName || payment.customerName || 'Customer'}</h5>
-                        <p class="mb-1">Transaction: ${payment.transactionReference || payment.transactionCode || 'N/A'}</p>
-                        <p class="mb-1">Amount: KES ${payment.amount.toLocaleString()}</p>
-                        <p>Date: ${new Date(payment.date).toLocaleDateString()}</p>
-                    </div>
-                    ${typeof qrImage === 'string' && qrImage.startsWith('data:image') 
-                        ? `<img src="${qrImage}" alt="QR Code" class="qr-preview mb-3" style="max-width: 300px; height: auto; margin: 0 auto; display: block;">`
-                        : qrImage}
-                    <div class="mt-3">
-                        <p class="mb-1">📅 ${eventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
-                        <p class="mb-1">📍 Winter Villa Resort & Spa, Embu</p>
-                        <p>⏰ 2:00 PM - Midnight</p>
-                    </div>
-                    <div class="text-small mt-3">
-                        <p class="mb-0">Present this QR code at entrance</p>
-                        <p class="mb-0">Valid for one person only</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        function sendQRByEmail() {
-            if (!currentQRPayment) {
-                alert('No payment selected');
-                return;
-            }
-
-            if (!currentQRPayment.email) {
-                alert('No email address available for this payment');
-                return;
-            }
-
-            const subject = encodeURIComponent(`Your Kalenjin Vibes Ticket - ${currentQRPayment.transactionReference || currentQRPayment.transactionCode}`);
-            const body = encodeURIComponent(document.getElementById('emailMessage').value);
-            
-            // Create a mailto link
-            window.open(`mailto:${currentQRPayment.email}?subject=${subject}&body=${body}`, '_blank');
-            
-            showSuccess('Email composer opened with ticket details.');
-            
-            // Close modal after a delay
-            setTimeout(() => {
-                const modal = bootstrap.Modal.getInstance(document.getElementById('sendQRModal'));
-                if (modal) modal.hide();
-            }, 2000);
-        }
-
-        function downloadQRTicket() {
-            if (!currentQRPayment) return;
-
-            const ticketElement = document.getElementById('ticketDesign');
-            if (!ticketElement) return;
-
-            html2canvas(ticketElement, {
-                backgroundColor: null,
-                scale: 2,
-                useCORS: true
-            }).then(canvas => {
-                const link = document.createElement('a');
-                const fileName = `Kalenjin_Ticket_${(currentQRPayment.fullName || currentQRPayment.customerName || 'Customer').replace(/[^a-z0-9]/gi, '_')}_${currentQRPayment.transactionReference || currentQRPayment.transactionCode}.png`;
-                link.download = fileName;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-                showSuccess('Ticket downloaded successfully!');
-            }).catch(error => {
-                console.error('Download error:', error);
-                alert('Error downloading ticket. Please try again.');
-            });
-        }
-
-        function copyQRCode() {
-            if (!currentQRPayment) return;
-
-            const ticketElement = document.getElementById('ticketDesign');
-            if (!ticketElement) return;
-
-            html2canvas(ticketElement, {
-                backgroundColor: null,
-                scale: 2,
-                useCORS: true
-            }).then(canvas => {
-                canvas.toBlob(blob => {
-                    if (navigator.clipboard && navigator.clipboard.write) {
-                        const item = new ClipboardItem({ "image/png": blob });
-                        navigator.clipboard.write([item]).then(() => {
-                            showSuccess('QR code copied to clipboard!');
-                        }).catch(err => {
-                            console.error('Copy error:', err);
-                            alert('Could not copy to clipboard. Please download instead.');
-                        });
-                    } else {
-                        alert('Clipboard API not supported. Please download the ticket instead.');
-                    }
-                });
-            }).catch(error => {
-                console.error('Copy error:', error);
-                alert('Error copying QR code.');
-            });
         }
 
         // QR Scanner
@@ -1541,15 +1381,18 @@ Kalenjin Vibes Team`;
             try {
                 const qrData = JSON.parse(decodedText);
                 const payment = allPayments.find(p => 
-                    (p.transactionReference === qrData.transactionCode) || 
-                    (p.transactionCode === qrData.transactionCode)
+                    p.id === qrData.id || 
+                    p.transactionReference === qrData.transactionCode || 
+                    p.transactionCode === qrData.transactionCode
                 );
                 
                 if (payment && payment.status === 'verified') {
                     payment.attended = true;
                     showQRResult('success', `✅ Valid Ticket!<br><br>
                         Customer: ${payment.fullName || payment.customerName}<br>
+                        Email: ${payment.email || 'No email'}<br>
                         Amount: KES ${payment.amount.toLocaleString()}<br>
+                        Ticket Type: ${payment.ticketType}<br>
                         Status: VERIFIED<br>
                         Time: ${new Date().toLocaleTimeString()}`);
                 } else {
@@ -1644,7 +1487,9 @@ Kalenjin Vibes Team`;
                         `<div class="alert alert-success">
                             <i class="bi bi-check-circle-fill"></i> Already Verified<br><br>
                             <strong>Customer:</strong> ${payment.fullName || payment.customerName}<br>
+                            <strong>Email:</strong> ${payment.email || 'No email'}<br>
                             <strong>Amount:</strong> KES ${payment.amount.toLocaleString()}<br>
+                            <strong>Ticket Type:</strong> ${payment.ticketType}<br>
                             <strong>Date:</strong> ${new Date(payment.date).toLocaleDateString()}<br>
                             <strong>Status:</strong> <span class="badge bg-success">VERIFIED</span>
                         </div>`;
@@ -1653,7 +1498,9 @@ Kalenjin Vibes Team`;
                         `<div class="alert alert-warning">
                             <i class="bi bi-clock-history"></i> Payment Pending<br><br>
                             <strong>Customer:</strong> ${payment.fullName || payment.customerName}<br>
+                            <strong>Email:</strong> ${payment.email || 'No email'}<br>
                             <strong>Amount:</strong> KES ${payment.amount.toLocaleString()}<br>
+                            <strong>Ticket Type:</strong> ${payment.ticketType}<br>
                             <button class="btn btn-sm btn-success mt-2" onclick="verifyPayment('${payment.id}')">
                                 <i class="bi bi-check"></i> Verify Now
                             </button>
@@ -1663,10 +1510,9 @@ Kalenjin Vibes Team`;
                         `<div class="alert alert-danger">
                             <i class="bi bi-x-circle-fill"></i> Payment Rejected<br><br>
                             <strong>Customer:</strong> ${payment.fullName || payment.customerName}<br>
+                            <strong>Email:</strong> ${payment.email || 'No email'}<br>
                             <strong>Amount:</strong> KES ${payment.amount.toLocaleString()}<br>
-                            <button class="btn btn-sm btn-warning mt-2" onclick="payment.status='pending'; location.reload();">
-                                <i class="bi bi-arrow-clockwise"></i> Mark as Pending
-                            </button>
+                            <strong>Ticket Type:</strong> ${payment.ticketType}<br>
                         </div>`;
                 }
             } else {
@@ -1685,6 +1531,7 @@ Kalenjin Vibes Team`;
             document.getElementById('cashPhoneNumber').value = '';
             document.getElementById('cashEmail').value = '';
             document.getElementById('cashAmount').value = '';
+            document.getElementById('cashTicketType').value = '';
             new bootstrap.Modal(document.getElementById('addCashPaymentModal')).show();
         }
 
@@ -1722,13 +1569,8 @@ Kalenjin Vibes Team`;
 
         // Expose functions to global scope
         window.showSection = showSection;
-        window.showAllPaymentsModal = showAllPaymentsModal;
         window.showPendingModal = showPendingModal;
-        window.showVerifiedTodayModal = showVerifiedTodayModal;
-        window.showAllVerifiedModal = showAllVerifiedModal;
         window.filterPayments = filterPayments;
-        window.filterAllPayments = filterAllPayments;
-        window.filterVerifiedPayments = filterVerifiedPayments;
         window.openQrScanner = openQrScanner;
         window.openManualVerification = openManualVerification;
         window.openAddManualPayment = openAddManualPayment;
@@ -1737,15 +1579,12 @@ Kalenjin Vibes Team`;
         window.verifyPayment = verifyPayment;
         window.rejectPayment = rejectPayment;
         window.saveCashPayment = saveCashPayment;
-        window.prepareQRForSending = prepareQRForSending;
-        window.sendQRByEmail = sendQRByEmail;
-        window.downloadQRTicket = downloadQRTicket;
-        window.copyQRCode = copyQRCode;
+        window.generateVerifiedPDF = generateVerifiedPDF;
         window.refreshData = refreshData;
         window.logout = logout;
         window.toggleQuickActions = toggleQuickActions;
 
-        console.log('✅ Production-ready Admin Dashboard Loaded');
+        console.log('✅ Enhanced Admin Dashboard Loaded');
 
     </script>
 </body>
