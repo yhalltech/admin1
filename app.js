@@ -281,13 +281,19 @@ window.openPaymentModal = async function(paymentId) {
     const ticketsUsed = selectedPayment.ticketsUsed || 0;
     const ticketsRemaining = selectedPayment.ticketsRemaining || ticketsCount;
     
+    // ✅ CHECK IF TICKETS EXIST
+    const ticketsExist = await checkTicketsExist(paymentId);
+    
     // Load individual tickets
     let individualTicketsHTML = '';
+    let ticketCount = 0;
     try {
         const ticketsQuery = await db.collection("tickets")
             .where("paymentId", "==", paymentId)
-            .orderBy("ticketNumber")
+            .orderBy("ticketIndex")
             .get();
+        
+        ticketCount = ticketsQuery.size;
         
         if (!ticketsQuery.empty) {
             individualTicketsHTML = '<div class="mt-4"><h6 class="text-light mb-2">Individual Tickets:</h6><div class="row">';
@@ -299,10 +305,10 @@ window.openPaymentModal = async function(paymentId) {
                     <div class="col-md-6 mb-2">
                         <div class="p-2 border border-secondary rounded">
                             <div class="d-flex justify-content-between">
-                                <span>Ticket #${ticket.ticketNumber}</span>
+                                <span>Ticket #${ticket.ticketIndex}</span>
                                 <span class="badge ${statusClass}">${ticket.status || 'active'}</span>
                             </div>
-                            <small class="text-light">${ticket.qrData?.substring(0, 20)}...</small>
+                            <small class="text-light">${ticket.id.substring(0, 20)}...</small>
                         </div>
                     </div>
                 `;
@@ -313,23 +319,61 @@ window.openPaymentModal = async function(paymentId) {
         console.error('Error loading individual tickets:', error);
     }
     
+    // ✅ SMART BUTTON LOGIC
     let actionsHtml = '';
+    
     if (selectedPayment.status === 'pending') {
-        actionsHtml = `
-            <button class="btn btn-lg btn-success w-100 mb-2" onclick="verifyPayment('${selectedPayment.id}')">
-                <i class="bi bi-check-lg me-2"></i>Verify Payment & Generate Tickets
-            </button>
-            <button class="btn btn-lg btn-danger w-100 mb-2" onclick="rejectPayment('${selectedPayment.id}')">
-                <i class="bi bi-x-lg me-2"></i>Reject Payment
-            </button>
-        `;
+        // ✅ CHECK IF TICKETS ALREADY EXIST (safety)
+        if (ticketsExist) {
+            actionsHtml = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Tickets already generated! Payment status is pending but tickets exist.
+                </div>
+                <button class="btn btn-lg btn-danger w-100 mb-2" onclick="rejectPayment('${selectedPayment.id}')">
+                    <i class="bi bi-x-lg me-2"></i>Reject Payment
+                </button>
+            `;
+        } else {
+            actionsHtml = `
+                <button class="btn btn-lg btn-success w-100 mb-2" onclick="verifyPayment('${selectedPayment.id}')">
+                    <i class="bi bi-check-lg me-2"></i>Verify Payment & Generate Tickets
+                </button>
+                <button class="btn btn-lg btn-danger w-100 mb-2" onclick="rejectPayment('${selectedPayment.id}')">
+                    <i class="bi bi-x-lg me-2"></i>Reject Payment
+                </button>
+            `;
+        }
     } else if (selectedPayment.status === 'verified') {
         actionsHtml = `
             <button class="btn btn-lg btn-warning w-100 mb-2" onclick="reverifyTicket('${selectedPayment.id}')">
-                <i class="bi bi-arrow-repeat me-2"></i>Reverify/Mark as Used
+                <i class="bi bi-arrow-repeat me-2"></i>Mark Tickets as Used
             </button>
-            <button class="btn btn-lg btn-info w-100 mb-2" onclick="generateMissingTickets('${selectedPayment.id}')">
-                <i class="bi bi-ticket-perforated me-2"></i>Regenerate Tickets
+        `;
+        
+        // ✅ ONLY SHOW REGENERATE IF NO TICKETS EXIST
+        if (!ticketsExist || ticketCount === 0) {
+            actionsHtml += `
+                <button class="btn btn-lg btn-info w-100 mb-2" onclick="generateMissingTickets('${selectedPayment.id}')">
+                    <i class="bi bi-ticket-perforated me-2"></i>Generate Missing Tickets
+                </button>
+            `;
+        } else {
+            actionsHtml += `
+                <div class="alert alert-success mb-2">
+                    <i class="bi bi-check-circle me-2"></i>
+                    ${ticketCount} ticket(s) already generated ✅
+                </div>
+                <button class="btn btn-lg btn-outline-warning w-100 mb-2" onclick="generateMissingTickets('${selectedPayment.id}')">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Force Regenerate (Delete & Recreate)
+                </button>
+            `;
+        }
+        
+        // ✅ ADD CHANGE STATUS BUTTON
+        actionsHtml += `
+            <button class="btn btn-lg btn-secondary w-100 mb-2" onclick="changePaymentStatus('${selectedPayment.id}')">
+                <i class="bi bi-pencil me-2"></i>Change Payment Status
             </button>
         `;
     }
@@ -455,9 +499,43 @@ async function generateIndividualTickets(paymentId) {
 // Generate missing tickets
 window.generateMissingTickets = async function(paymentId) {
     try {
-        showLoading('Generating tickets...');
+        const payment = window.allPayments.find(p => p.id === paymentId);
+        
+        if (!payment) {
+            alert('Payment not found');
+            return;
+        }
+        
+        // ✅ EXTRA SAFETY CHECK
+        if (payment.ticketsGenerated === true) {
+            if (!confirm('⚠️ Tickets appear to already exist. Regenerating will CREATE DUPLICATES. Are you absolutely sure?')) {
+                return;
+            }
+        }
+        
+        showLoading('Regenerating tickets...');
+        
+        // Delete existing tickets first
+        const existingTickets = await db.collection("tickets")
+            .where("paymentId", "==", paymentId)
+            .get();
+        
+        const batch = db.batch();
+        existingTickets.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+        
+        // Generate new tickets
         await generateIndividualTickets(paymentId);
-        showSuccess('Tickets regenerated successfully!');
+        
+        // Mark as generated
+        await db.collection("payments").doc(paymentId).update({
+            ticketsGenerated: true,
+            lastRegeneratedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        showSuccess('✅ Tickets regenerated successfully!');
         
         // Refresh the modal
         openPaymentModal(paymentId);
@@ -516,7 +594,19 @@ window.deletePayment = async function(paymentId) {
         alert('Failed to delete payment: ' + error.message);
     }
 }
-
+async function checkTicketsExist(paymentId) {
+    try {
+        const ticketsQuery = await db.collection("tickets")
+            .where("paymentId", "==", paymentId)
+            .limit(1)
+            .get();
+        
+        return !ticketsQuery.empty;
+    } catch (error) {
+        console.error('Error checking tickets:', error);
+        return false;
+    }
+}
 // Reverify ticket for event entry
 window.reverifyTicket = function(paymentId) {
     const payment = window.allPayments.find(p => p.id === paymentId);
@@ -579,7 +669,26 @@ window.submitReverification = async function() {
 window.verifyPayment = async function(id) {
     try {
         const payment = window.allPayments.find(p => p.id === id);
-        const numberOfTickets = payment?.numberOfTickets || 1;
+        
+        if (!payment) {
+            alert('Payment not found');
+            return;
+        }
+        
+        // ✅ PREVENT DOUBLE VERIFICATION
+        if (payment.status === 'verified') {
+            alert('⚠️ This payment is already verified! Cannot verify twice.');
+            return;
+        }
+        
+        // ✅ CHECK IF TICKETS ALREADY GENERATED
+        const ticketsExist = await checkTicketsExist(id);
+        if (ticketsExist) {
+            alert('⚠️ Tickets already generated for this payment! Cannot regenerate.');
+            return;
+        }
+        
+        const numberOfTickets = payment.numberOfTickets || 1;
         
         showLoading('Verifying payment and generating tickets...');
         
@@ -590,7 +699,8 @@ window.verifyPayment = async function(id) {
             verifiedBy: adminData.email,
             numberOfTickets: numberOfTickets,
             ticketsUsed: 0,
-            ticketsRemaining: numberOfTickets
+            ticketsRemaining: numberOfTickets,
+            ticketsGenerated: true // ✅ FLAG TO PREVENT REGENERATION
         });
         
         // Generate individual tickets
@@ -603,6 +713,7 @@ window.verifyPayment = async function(id) {
             window.allPayments[paymentIndex].numberOfTickets = numberOfTickets;
             window.allPayments[paymentIndex].ticketsUsed = 0;
             window.allPayments[paymentIndex].ticketsRemaining = numberOfTickets;
+            window.allPayments[paymentIndex].ticketsGenerated = true;
         }
         
         updateDashboardStats();
@@ -612,7 +723,7 @@ window.verifyPayment = async function(id) {
         const modal = bootstrap.Modal.getInstance(document.getElementById('paymentDetailsModal'));
         if (modal) modal.hide();
         
-        showSuccess(`Payment verified successfully! ${numberOfTickets} ticket(s) generated.`);
+        showSuccess(`✅ Payment verified successfully! ${numberOfTickets} ticket(s) generated.`);
         
     } catch (error) {
         console.error('Error:', error);
@@ -1565,5 +1676,55 @@ function setupEventListeners() {
         }
     });
 }
+// ✅ NEW FUNCTION: CHANGE PAYMENT STATUS
+window.changePaymentStatus = async function(paymentId) {
+    const payment = window.allPayments.find(p => p.id === paymentId);
+    if (!payment) return;
+    
+    const newStatus = prompt(
+        `Current status: ${payment.status}\n\nEnter new status (pending/verified/rejected):`,
+        payment.status
+    );
+    
+    if (!newStatus || newStatus === payment.status) return;
+    
+    const validStatuses = ['pending', 'verified', 'rejected'];
+    if (!validStatuses.includes(newStatus.toLowerCase())) {
+        alert('Invalid status. Must be: pending, verified, or rejected');
+        return;
+    }
+    
+    if (!confirm(`Change status from "${payment.status}" to "${newStatus}"?`)) {
+        return;
+    }
+    
+    try {
+        await db.collection("payments").doc(paymentId).update({
+            status: newStatus.toLowerCase(),
+            statusChangedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            statusChangedBy: adminData.email
+        });
+        
+        // Update local data
+        const paymentIndex = window.allPayments.findIndex(p => p.id === paymentId);
+        if (paymentIndex !== -1) {
+            window.allPayments[paymentIndex].status = newStatus.toLowerCase();
+        }
+        
+        updateDashboardStats();
+        loadRecentActivity();
+        loadPaymentsTable();
+        
+        showSuccess(`Status changed to: ${newStatus}`);
+        
+        // Refresh modal
+        openPaymentModal(paymentId);
+        
+    } catch (error) {
+        console.error('Error changing status:', error);
+        alert('Failed to change status: ' + error.message);
+    }
+}
 
+console.log('✅ Admin duplicate prevention loaded');
 console.log('✅ Admin Dashboard Loaded Successfully');
