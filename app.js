@@ -411,65 +411,46 @@ window.openPaymentModal = async function(paymentId) {
 
 // Generate individual tickets
 async function generateIndividualTickets(paymentId) {
-    try {
-        const payment = window.allPayments.find(p => p.id === paymentId);
-        if (!payment) {
-            console.error('Payment not found:', paymentId);
-            return false;
-        }
-        
-        const numberOfTickets = payment.numberOfTickets || 1;
-        const ticketType = payment.ticketType || determineTicketType(payment.amount);
-        const transactionCode = payment.transactionReference || payment.transactionCode;
-        
-        console.log(`Generating ${numberOfTickets} tickets for payment ${paymentId}`);
-        
-        // Check if tickets already exist
-        const existingTicketsQuery = await db.collection("tickets")
-            .where("paymentId", "==", paymentId)
-            .get();
-        
-        if (!existingTicketsQuery.empty) {
-            console.log(`${existingTicketsQuery.size} tickets already exist for this payment`);
-            
-            // Delete existing tickets and regenerate
-            const batch = db.batch();
-            existingTicketsQuery.forEach(doc => {
-                batch.delete(doc.ref);
-            });
-            await batch.commit();
-            console.log('Cleared existing tickets');
-        }
-        
-        // Generate individual tickets
-        for (let i = 1; i <= numberOfTickets; i++) {
-            const ticketData = {
-                paymentId: paymentId,
-                transactionCode: transactionCode,
-                ticketNumber: i,
-                totalTickets: numberOfTickets,
-                ticketType: ticketType,
-                customerName: payment.fullName || payment.customerName,
-                customerEmail: payment.email,
-                customerPhone: payment.phoneNumber,
-                amount: payment.amount,
-                status: 'active',
-                qrData: `${transactionCode}-T${i}-${ticketType}`,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                verified: payment.status === 'verified'
-            };
-            
-            await db.collection("tickets").add(ticketData);
-            console.log(`✅ Generated ticket ${i}/${numberOfTickets}: ${ticketData.qrData}`);
-        }
-        
-        console.log(`✅ All ${numberOfTickets} tickets generated for ${payment.fullName}`);
-        return true;
-    } catch (error) {
-        console.error('Error generating tickets:', error);
-        throw error;
+  const paymentSnap = await db.collection("payments").doc(paymentId).get();
+  if (!paymentSnap.exists) throw new Error("Payment not found");
+
+  const payment = paymentSnap.data();
+  const batch = db.batch();
+
+  let globalIndex = 1;
+
+  for (let groupIndex = 0; groupIndex < payment.ticketDetails.length; groupIndex++) {
+    const detail = payment.ticketDetails[groupIndex];
+
+    for (let i = 0; i < detail.quantity; i++) {
+      const ticketRef = db.collection("tickets").doc(); // 🔥 UNIQUE ID
+
+      batch.set(ticketRef, {
+        paymentId,
+        transactionReference: payment.transactionReference,
+
+        ticketType: detail.type,
+        ticketIndex: globalIndex,
+        ticketGroupIndex: groupIndex + 1,
+
+        customerName: payment.fullName,
+        customerEmail: payment.email,
+
+        verified: true,
+        status: "active",
+
+        qrData: ticketRef.id, // 🔐 KEY CHANGE
+
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      globalIndex++;
     }
+  }
+
+  await batch.commit();
 }
+
 
 // Generate missing tickets
 window.generateMissingTickets = async function(paymentId) {
@@ -914,188 +895,56 @@ window.openQrScanner = function() {
 
 // QR Scan success handler with ticket verification
 async function onScanSuccess(decodedText) {
-    stopQrScanner();
-    
-    try {
-        // Parse QR data: TRANSACTION-TICKETNUMBER-TYPE
-        const [transactionCode, ticketInfo, ticketType] = decodedText.split('-');
-        const ticketNumber = parseInt(ticketInfo.replace('T', '')) || 1;
-        
-        console.log('🔍 Scanning QR:', { decodedText, transactionCode, ticketNumber, ticketType });
-        
-        // Check tickets collection first
-        const ticketsQuery = await db.collection("tickets")
-            .where("qrData", "==", decodedText)
-            .limit(1)
-            .get();
-        
-        if (!ticketsQuery.empty) {
-            const ticketDoc = ticketsQuery.docs[0];
-            const ticketData = ticketDoc.data();
-            
-            console.log('🎫 Found ticket in collection:', ticketData);
-            
-            // Check if ticket already used
-            if (ticketData.status === 'used') {
-                showVerificationResult('used', 'Ticket already used', ticketData);
-                return;
-            }
-            
-            // Check if payment is verified
-            if (!ticketData.verified) {
-                showVerificationResult('error', 'Payment not verified yet');
-                return;
-            }
-            
-            // Verify ticket
-            await verifyIndividualTicket(ticketDoc.id, ticketData, decodedText);
-            return;
-        }
-        
-        // Fallback: Find in payments collection
-        const payment = window.allPayments.find(p => 
-            (p.transactionReference && p.transactionReference === transactionCode) || 
-            (p.transactionCode && p.transactionCode === transactionCode)
-        );
-        
-        if (!payment) {
-            showVerificationResult('error', 'Ticket not found in system');
-            return;
-        }
-        
-        if (payment.status !== 'verified') {
-            showVerificationResult('error', 'Payment not verified yet');
-            return;
-        }
-        
-        // Check if all tickets are used
-        if (payment.ticketsRemaining <= 0) {
-            showVerificationResult('expired', 'All tickets from this transaction have been used', null, payment);
-            return;
-        }
-        
-        // Check if ticket already used in verifications
-        const existingVerification = window.verificationRecords.find(v => 
-            v.qrData === decodedText
-        );
-        
-        if (existingVerification) {
-            showVerificationResult('used', 'Ticket already used', existingVerification, payment);
-            return;
-        }
-        
-        // Verify ticket
-        await verifyTicketForEntry(decodedText, payment, ticketNumber, ticketType);
-        
-    } catch (error) {
-        console.error('QR verification error:', error);
-        showVerificationResult('error', 'Invalid QR code format');
+  stopQrScanner();
+
+  try {
+    const ticketRef = db.collection("tickets").doc(decodedText);
+    const ticketSnap = await ticketRef.get();
+
+    if (!ticketSnap.exists) {
+      showVerificationResult("error", "Invalid ticket");
+      return;
     }
+
+    const ticket = ticketSnap.data();
+
+    if (!ticket.verified) {
+      showVerificationResult("error", "Ticket not verified");
+      return;
+    }
+
+    if (ticket.status === "used") {
+      showVerificationResult("used", "Ticket already used", ticket);
+      return;
+    }
+
+    await verifyIndividualTicket(ticketRef.id, ticket);
+
+  } catch (err) {
+    showVerificationResult("error", "Scan failed");
+  }
 }
 
 // Verify individual ticket
-async function verifyIndividualTicket(ticketId, ticketData, qrData) {
-    try {
-        // Update ticket status
-        await db.collection("tickets").doc(ticketId).update({
-            status: 'used',
-            scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            scannedBy: adminData.email
-        });
-        
-        // Record verification
-        await db.collection("verifications").add({
-            ticketId: ticketId,
-            paymentId: ticketData.paymentId,
-            transactionCode: ticketData.transactionCode,
-            qrData: qrData,
-            ticketType: ticketData.ticketType,
-            ticketNumber: ticketData.ticketNumber,
-            totalTickets: ticketData.totalTickets,
-            customerName: ticketData.customerName,
-            customerEmail: ticketData.customerEmail,
-            amount: ticketData.amount,
-            scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            scannedBy: adminData.email,
-            status: 'used'
-        });
-        
-        // Update payment tickets used count
-        const paymentRef = db.collection("payments").doc(ticketData.paymentId);
-        const paymentDoc = await paymentRef.get();
-        
-        if (paymentDoc.exists) {
-            const paymentData = paymentDoc.data();
-            const ticketsUsed = (paymentData.ticketsUsed || 0) + 1;
-            const ticketsRemaining = (paymentData.numberOfTickets || 1) - ticketsUsed;
-            
-            await paymentRef.update({
-                ticketsUsed: ticketsUsed,
-                ticketsRemaining: ticketsRemaining,
-                lastVerifiedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            
-            // Update local data
-            const paymentIndex = window.allPayments.findIndex(p => p.id === ticketData.paymentId);
-            if (paymentIndex !== -1) {
-                window.allPayments[paymentIndex].ticketsUsed = ticketsUsed;
-                window.allPayments[paymentIndex].ticketsRemaining = ticketsRemaining;
-            }
-        }
-        
-        // Update local scanned tickets
-        await loadScannedTickets();
-        
-        showVerificationResult('success', 'Ticket verified successfully', ticketData);
-        
-    } catch (error) {
-        console.error('Error verifying individual ticket:', error);
-        showVerificationResult('error', 'Failed to verify ticket');
-    }
-}
 
-// Verify ticket for entry (legacy)
-async function verifyTicketForEntry(qrData, payment, ticketNumber, ticketType) {
-    try {
-        // Record verification
-        await db.collection("verifications").add({
-            paymentId: payment.id,
-            transactionCode: payment.transactionReference || payment.transactionCode,
-            qrData: qrData,
-            ticketType: ticketType,
-            ticketNumber: ticketNumber,
-            totalTickets: payment.numberOfTickets || 1,
-            customerName: payment.fullName || payment.customerName,
-            customerEmail: payment.email,
-            amount: payment.amount,
-            scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            scannedBy: adminData.email,
-            status: 'used'
-        });
-        
-        // Update tickets used count
-        const ticketsUsed = (payment.ticketsUsed || 0) + 1;
-        const ticketsRemaining = (payment.numberOfTickets || 1) - ticketsUsed;
-        
-        await db.collection("payments").doc(payment.id).update({
-            ticketsUsed: ticketsUsed,
-            ticketsRemaining: ticketsRemaining,
-            lastVerifiedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Update local data
-        payment.ticketsUsed = ticketsUsed;
-        payment.ticketsRemaining = ticketsRemaining;
-        
-        // Add to verification records
-        await loadVerificationRecords();
-        
-        showVerificationResult('success', 'Ticket verified successfully', null, payment);
-        
-    } catch (error) {
-        console.error('Error verifying ticket:', error);
-        showVerificationResult('error', 'Failed to verify ticket');
-    }
+async function verifyIndividualTicket(ticketId, ticket) {
+  await db.collection("tickets").doc(ticketId).update({
+    status: "used",
+    scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    scannedBy: adminData.email
+  });
+
+  await db.collection("verifications").add({
+    ticketId,
+    paymentId: ticket.paymentId,
+    ticketType: ticket.ticketType,
+    ticketIndex: ticket.ticketIndex,
+    customerName: ticket.customerName,
+    scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    scannedBy: adminData.email
+  });
+
+  showVerificationResult("success", "Entry granted", ticket);
 }
 
 // Show verification result
