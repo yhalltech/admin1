@@ -16,6 +16,7 @@ const db = firebase.firestore();
 // Global variables
 window.allPayments = [];
 window.verificationRecords = [];
+window.scannedTickets = [];
 let adminData = null;
 let html5QrCode = null;
 let selectedPayment = null;
@@ -31,6 +32,7 @@ auth.onAuthStateChanged(async (user) => {
             
             await loadPaymentsFromFirestore();
             await loadVerificationRecords();
+            await loadScannedTickets();
             document.getElementById('loadingOverlay').style.display = 'none';
             
             setupEventListeners();
@@ -61,7 +63,8 @@ async function loadPaymentsFromFirestore() {
                 numberOfTickets: parseInt(paymentData.numberOfTickets) || 1,
                 ticketsUsed: parseInt(paymentData.ticketsUsed) || 0,
                 ticketsRemaining: parseInt(paymentData.ticketsRemaining) || (parseInt(paymentData.numberOfTickets) || 1),
-                ticketType: paymentData.ticketType || determineTicketType(paymentData.amount)
+                ticketType: paymentData.ticketType || determineTicketType(paymentData.amount),
+                ticketDetails: paymentData.ticketDetails || []
             });
         });
         
@@ -89,6 +92,26 @@ async function loadVerificationRecords() {
         });
     } catch (error) {
         console.error('Error loading verifications:', error);
+    }
+}
+
+// Load scanned tickets
+async function loadScannedTickets() {
+    try {
+        const ticketsQuery = db.collection("tickets")
+            .where("status", "==", "used")
+            .orderBy("scannedAt", "desc");
+        const querySnapshot = await ticketsQuery.get();
+        window.scannedTickets = [];
+        
+        querySnapshot.forEach((docSnap) => {
+            window.scannedTickets.push({
+                id: docSnap.id,
+                ...docSnap.data()
+            });
+        });
+    } catch (error) {
+        console.error('Error loading scanned tickets:', error);
     }
 }
 
@@ -258,11 +281,43 @@ window.openPaymentModal = async function(paymentId) {
     const ticketsUsed = selectedPayment.ticketsUsed || 0;
     const ticketsRemaining = selectedPayment.ticketsRemaining || ticketsCount;
     
+    // Load individual tickets
+    let individualTicketsHTML = '';
+    try {
+        const ticketsQuery = await db.collection("tickets")
+            .where("paymentId", "==", paymentId)
+            .orderBy("ticketNumber")
+            .get();
+        
+        if (!ticketsQuery.empty) {
+            individualTicketsHTML = '<div class="mt-4"><h6 class="text-light mb-2">Individual Tickets:</h6><div class="row">';
+            ticketsQuery.forEach(doc => {
+                const ticket = doc.data();
+                const statusClass = ticket.status === 'used' ? 'bg-danger' : 
+                                  ticket.status === 'active' ? 'bg-success' : 'bg-secondary';
+                individualTicketsHTML += `
+                    <div class="col-md-6 mb-2">
+                        <div class="p-2 border border-secondary rounded">
+                            <div class="d-flex justify-content-between">
+                                <span>Ticket #${ticket.ticketNumber}</span>
+                                <span class="badge ${statusClass}">${ticket.status || 'active'}</span>
+                            </div>
+                            <small class="text-light">${ticket.qrData?.substring(0, 20)}...</small>
+                        </div>
+                    </div>
+                `;
+            });
+            individualTicketsHTML += '</div></div>';
+        }
+    } catch (error) {
+        console.error('Error loading individual tickets:', error);
+    }
+    
     let actionsHtml = '';
     if (selectedPayment.status === 'pending') {
         actionsHtml = `
             <button class="btn btn-lg btn-success w-100 mb-2" onclick="verifyPayment('${selectedPayment.id}')">
-                <i class="bi bi-check-lg me-2"></i>Verify Payment
+                <i class="bi bi-check-lg me-2"></i>Verify Payment & Generate Tickets
             </button>
             <button class="btn btn-lg btn-danger w-100 mb-2" onclick="rejectPayment('${selectedPayment.id}')">
                 <i class="bi bi-x-lg me-2"></i>Reject Payment
@@ -272,6 +327,9 @@ window.openPaymentModal = async function(paymentId) {
         actionsHtml = `
             <button class="btn btn-lg btn-warning w-100 mb-2" onclick="reverifyTicket('${selectedPayment.id}')">
                 <i class="bi bi-arrow-repeat me-2"></i>Reverify/Mark as Used
+            </button>
+            <button class="btn btn-lg btn-info w-100 mb-2" onclick="generateMissingTickets('${selectedPayment.id}')">
+                <i class="bi bi-ticket-perforated me-2"></i>Regenerate Tickets
             </button>
         `;
     }
@@ -335,6 +393,8 @@ window.openPaymentModal = async function(paymentId) {
                 </div>
             </div>
             
+            ${individualTicketsHTML}
+            
             <div class="row">
                 <div class="col-12">
                     <h6 class="text-light mb-2">Actions</h6>
@@ -349,18 +409,118 @@ window.openPaymentModal = async function(paymentId) {
     modal.show();
 }
 
+// Generate individual tickets
+async function generateIndividualTickets(paymentId) {
+    try {
+        const payment = window.allPayments.find(p => p.id === paymentId);
+        if (!payment) {
+            console.error('Payment not found:', paymentId);
+            return false;
+        }
+        
+        const numberOfTickets = payment.numberOfTickets || 1;
+        const ticketType = payment.ticketType || determineTicketType(payment.amount);
+        const transactionCode = payment.transactionReference || payment.transactionCode;
+        
+        console.log(`Generating ${numberOfTickets} tickets for payment ${paymentId}`);
+        
+        // Check if tickets already exist
+        const existingTicketsQuery = await db.collection("tickets")
+            .where("paymentId", "==", paymentId)
+            .get();
+        
+        if (!existingTicketsQuery.empty) {
+            console.log(`${existingTicketsQuery.size} tickets already exist for this payment`);
+            
+            // Delete existing tickets and regenerate
+            const batch = db.batch();
+            existingTicketsQuery.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            console.log('Cleared existing tickets');
+        }
+        
+        // Generate individual tickets
+        for (let i = 1; i <= numberOfTickets; i++) {
+            const ticketData = {
+                paymentId: paymentId,
+                transactionCode: transactionCode,
+                ticketNumber: i,
+                totalTickets: numberOfTickets,
+                ticketType: ticketType,
+                customerName: payment.fullName || payment.customerName,
+                customerEmail: payment.email,
+                customerPhone: payment.phoneNumber,
+                amount: payment.amount,
+                status: 'active',
+                qrData: `${transactionCode}-T${i}-${ticketType}`,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                verified: payment.status === 'verified'
+            };
+            
+            await db.collection("tickets").add(ticketData);
+            console.log(`✅ Generated ticket ${i}/${numberOfTickets}: ${ticketData.qrData}`);
+        }
+        
+        console.log(`✅ All ${numberOfTickets} tickets generated for ${payment.fullName}`);
+        return true;
+    } catch (error) {
+        console.error('Error generating tickets:', error);
+        throw error;
+    }
+}
+
+// Generate missing tickets
+window.generateMissingTickets = async function(paymentId) {
+    try {
+        showLoading('Generating tickets...');
+        await generateIndividualTickets(paymentId);
+        showSuccess('Tickets regenerated successfully!');
+        
+        // Refresh the modal
+        openPaymentModal(paymentId);
+    } catch (error) {
+        console.error('Error generating tickets:', error);
+        alert('Failed to generate tickets: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+};
+
 // Delete payment
 window.deletePayment = async function(paymentId) {
-    if (!confirm('Are you sure you want to delete this payment? This action cannot be undone.')) return;
+    if (!confirm('Are you sure you want to delete this payment? This will also delete all associated tickets. This action cannot be undone.')) return;
     
     try {
-        await db.collection("payments").doc(paymentId).delete();
+        // First delete associated tickets
+        const ticketsQuery = await db.collection("tickets")
+            .where("paymentId", "==", paymentId)
+            .get();
         
-        // Remove from local array
-        const paymentIndex = window.allPayments.findIndex(p => p.id === paymentId);
-        if (paymentIndex !== -1) {
-            window.allPayments.splice(paymentIndex, 1);
-        }
+        const batch = db.batch();
+        ticketsQuery.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        
+        // Delete verifications
+        const verificationsQuery = await db.collection("verifications")
+            .where("paymentId", "==", paymentId)
+            .get();
+        
+        verificationsQuery.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        
+        // Delete payment
+        batch.delete(db.collection("payments").doc(paymentId));
+        
+        await batch.commit();
+        
+        // Remove from local arrays
+        window.allPayments = window.allPayments.filter(p => p.id !== paymentId);
+        window.verificationRecords = window.verificationRecords.filter(v => v.paymentId !== paymentId);
+        window.scannedTickets = window.scannedTickets.filter(t => t.paymentId !== paymentId);
         
         updateDashboardStats();
         loadRecentActivity();
@@ -369,7 +529,7 @@ window.deletePayment = async function(paymentId) {
         const modal = bootstrap.Modal.getInstance(document.getElementById('paymentDetailsModal'));
         if (modal) modal.hide();
         
-        showSuccess('Payment deleted successfully!');
+        showSuccess('Payment and all associated data deleted successfully!');
     } catch (error) {
         console.error('Error deleting payment:', error);
         alert('Failed to delete payment: ' + error.message);
@@ -434,12 +594,15 @@ window.submitReverification = async function() {
     }
 }
 
-// Verify payment
+// Verify payment and generate tickets
 window.verifyPayment = async function(id) {
     try {
         const payment = window.allPayments.find(p => p.id === id);
         const numberOfTickets = payment?.numberOfTickets || 1;
         
+        showLoading('Verifying payment and generating tickets...');
+        
+        // Update payment status
         await db.collection("payments").doc(id).update({
             status: 'verified',
             verifiedDate: firebase.firestore.FieldValue.serverTimestamp(),
@@ -449,6 +612,10 @@ window.verifyPayment = async function(id) {
             ticketsRemaining: numberOfTickets
         });
         
+        // Generate individual tickets
+        await generateIndividualTickets(id);
+        
+        // Update local data
         const paymentIndex = window.allPayments.findIndex(p => p.id === id);
         if (paymentIndex !== -1) {
             window.allPayments[paymentIndex].status = 'verified';
@@ -460,19 +627,23 @@ window.verifyPayment = async function(id) {
         updateDashboardStats();
         loadRecentActivity();
         loadPaymentsTable();
-        showSuccess('Payment verified successfully!');
         
         const modal = bootstrap.Modal.getInstance(document.getElementById('paymentDetailsModal'));
         if (modal) modal.hide();
+        
+        showSuccess(`Payment verified successfully! ${numberOfTickets} ticket(s) generated.`);
+        
     } catch (error) {
         console.error('Error:', error);
         alert('Failed to verify payment: ' + error.message);
+    } finally {
+        hideLoading();
     }
 }
 
 // Reject payment
 window.rejectPayment = async function(id) {
-    if (!confirm('Are you sure you want to reject this payment?')) return;
+    if (!confirm('Are you sure you want to reject this payment? This will mark all associated tickets as rejected.')) return;
     
     try {
         await db.collection("payments").doc(id).update({
@@ -480,6 +651,20 @@ window.rejectPayment = async function(id) {
             rejectedDate: firebase.firestore.FieldValue.serverTimestamp(),
             rejectedBy: adminData.email
         });
+        
+        // Update ticket statuses
+        const ticketsQuery = await db.collection("tickets")
+            .where("paymentId", "==", id)
+            .get();
+        
+        const batch = db.batch();
+        ticketsQuery.forEach(doc => {
+            batch.update(doc.ref, {
+                status: 'rejected',
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        });
+        await batch.commit();
         
         const paymentIndex = window.allPayments.findIndex(p => p.id === id);
         if (paymentIndex !== -1) {
@@ -489,7 +674,7 @@ window.rejectPayment = async function(id) {
         updateDashboardStats();
         loadRecentActivity();
         loadPaymentsTable();
-        showSuccess('Payment rejected');
+        showSuccess('Payment rejected and tickets marked as rejected.');
         
         const modal = bootstrap.Modal.getInstance(document.getElementById('paymentDetailsModal'));
         if (modal) modal.hide();
@@ -503,6 +688,24 @@ window.rejectPayment = async function(id) {
 function showSuccess(message) {
     document.getElementById('successMessage').textContent = message;
     new bootstrap.Modal(document.getElementById('successModal')).show();
+}
+
+// Show loading
+function showLoading(text = "Loading...") {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const loadingText = document.getElementById('loadingText');
+    if (loadingOverlay && loadingText) {
+        loadingOverlay.style.display = 'flex';
+        loadingText.textContent = text;
+    }
+}
+
+// Hide loading
+function hideLoading() {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+    }
 }
 
 // Manual verify payment with ticket details
@@ -574,7 +777,7 @@ window.manualVerifyPayment = function() {
                     
                     <div class="d-grid gap-2 mt-3">
                         <button class="btn btn-success btn-lg" onclick="verifyPayment('${payment.id}')">
-                            <i class="bi bi-check-lg me-2"></i> Verify Now
+                            <i class="bi bi-check-lg me-2"></i> Verify & Generate Tickets
                         </button>
                     </div>
                 </div>
@@ -644,6 +847,8 @@ window.submitCashPayment = async function() {
     }
     
     try {
+        showLoading('Adding cash payment and generating tickets...');
+        
         const paymentData = {
             fullName: name,
             customerName: name,
@@ -664,16 +869,23 @@ window.submitCashPayment = async function() {
             ticketsRemaining: quantity
         };
         
-        await db.collection('payments').add(paymentData);
+        // Add payment
+        const docRef = await db.collection('payments').add(paymentData);
+        
+        // Generate individual tickets
+        await generateIndividualTickets(docRef.id);
         
         const modal = bootstrap.Modal.getInstance(document.getElementById('addCashPaymentModal'));
-        modal.hide();
+        if (modal) modal.hide();
         
         await loadPaymentsFromFirestore();
-        showSuccess(`${quantity} ${ticketType}(s) added and verified for KES ${amount.toLocaleString()}`);
+        showSuccess(`${quantity} ${ticketType}(s) added, verified and tickets generated for KES ${amount.toLocaleString()}`);
+        
     } catch (error) {
         console.error('Error:', error);
         alert('Failed to add payment: ' + error.message);
+    } finally {
+        hideLoading();
     }
 }
 
@@ -707,9 +919,40 @@ async function onScanSuccess(decodedText) {
     try {
         // Parse QR data: TRANSACTION-TICKETNUMBER-TYPE
         const [transactionCode, ticketInfo, ticketType] = decodedText.split('-');
-        const ticketNumber = ticketInfo.replace('T', '');
+        const ticketNumber = parseInt(ticketInfo.replace('T', '')) || 1;
         
-        // Find payment
+        console.log('🔍 Scanning QR:', { decodedText, transactionCode, ticketNumber, ticketType });
+        
+        // Check tickets collection first
+        const ticketsQuery = await db.collection("tickets")
+            .where("qrData", "==", decodedText)
+            .limit(1)
+            .get();
+        
+        if (!ticketsQuery.empty) {
+            const ticketDoc = ticketsQuery.docs[0];
+            const ticketData = ticketDoc.data();
+            
+            console.log('🎫 Found ticket in collection:', ticketData);
+            
+            // Check if ticket already used
+            if (ticketData.status === 'used') {
+                showVerificationResult('used', 'Ticket already used', ticketData);
+                return;
+            }
+            
+            // Check if payment is verified
+            if (!ticketData.verified) {
+                showVerificationResult('error', 'Payment not verified yet');
+                return;
+            }
+            
+            // Verify ticket
+            await verifyIndividualTicket(ticketDoc.id, ticketData, decodedText);
+            return;
+        }
+        
+        // Fallback: Find in payments collection
         const payment = window.allPayments.find(p => 
             (p.transactionReference && p.transactionReference === transactionCode) || 
             (p.transactionCode && p.transactionCode === transactionCode)
@@ -725,7 +968,13 @@ async function onScanSuccess(decodedText) {
             return;
         }
         
-        // Check if ticket already used
+        // Check if all tickets are used
+        if (payment.ticketsRemaining <= 0) {
+            showVerificationResult('expired', 'All tickets from this transaction have been used', null, payment);
+            return;
+        }
+        
+        // Check if ticket already used in verifications
         const existingVerification = window.verificationRecords.find(v => 
             v.qrData === decodedText
         );
@@ -736,7 +985,7 @@ async function onScanSuccess(decodedText) {
         }
         
         // Verify ticket
-        await verifyTicketForEntry(decodedText, payment, parseInt(ticketNumber), ticketType);
+        await verifyTicketForEntry(decodedText, payment, ticketNumber, ticketType);
         
     } catch (error) {
         console.error('QR verification error:', error);
@@ -744,76 +993,68 @@ async function onScanSuccess(decodedText) {
     }
 }
 
-// Show verification result
-function showVerificationResult(type, message, verification = null, payment = null) {
-    const resultsDiv = document.getElementById('qrVerificationResult');
-    let html = '';
-    
-    if (type === 'success') {
-        html = `
-            <div class="alert alert-success">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="bi bi-check-circle-fill fs-1 me-3"></i>
-                    <div>
-                        <h4 class="mb-0">Ticket Verified!</h4>
-                        <p class="mb-0">Entry granted</p>
-                    </div>
-                </div>
-                ${payment ? `
-                    <div class="mt-3">
-                        <p><strong>Customer:</strong> ${payment.fullName || 'Customer'}</p>
-                        <p><strong>Ticket:</strong> ${payment.ticketType} (Ticket ${verification?.ticketNumber || '1'})</p>
-                        <p><strong>Time:</strong> ${new Date().toLocaleTimeString()}</p>
-                        <p><strong>Remaining:</strong> ${(payment.ticketsRemaining || payment.numberOfTickets || 1) - 1} ticket(s)</p>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    } else if (type === 'used') {
-        html = `
-            <div class="alert alert-danger">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="bi bi-x-circle-fill fs-1 me-3"></i>
-                    <div>
-                        <h4 class="mb-0">Ticket Already Used!</h4>
-                        <p class="mb-0">This ticket has been scanned before</p>
-                    </div>
-                </div>
-                ${verification ? `
-                    <div class="mt-3">
-                        <p><strong>First used at:</strong> ${new Date(verification.scannedAt?.toDate()).toLocaleString()}</p>
-                        <p><strong>Scanned by:</strong> ${verification.scannedBy}</p>
-                        <p><strong>Ticket:</strong> ${verification.ticketType} (Ticket ${verification.ticketNumber})</p>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    } else {
-        html = `
-            <div class="alert alert-danger">
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-exclamation-triangle-fill fs-1 me-3"></i>
-                    <div>
-                        <h4 class="mb-0">Verification Failed</h4>
-                        <p class="mb-0">${message}</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    resultsDiv.innerHTML = html;
-    
-    // Auto-close after 3 seconds
-    setTimeout(() => {
-        if (type === 'success' || type === 'used') {
-            const modal = bootstrap.Modal.getInstance(document.getElementById('qrScannerModal'));
-            if (modal) modal.hide();
+// Verify individual ticket
+async function verifyIndividualTicket(ticketId, ticketData, qrData) {
+    try {
+        // Update ticket status
+        await db.collection("tickets").doc(ticketId).update({
+            status: 'used',
+            scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            scannedBy: adminData.email
+        });
+        
+        // Record verification
+        await db.collection("verifications").add({
+            ticketId: ticketId,
+            paymentId: ticketData.paymentId,
+            transactionCode: ticketData.transactionCode,
+            qrData: qrData,
+            ticketType: ticketData.ticketType,
+            ticketNumber: ticketData.ticketNumber,
+            totalTickets: ticketData.totalTickets,
+            customerName: ticketData.customerName,
+            customerEmail: ticketData.customerEmail,
+            amount: ticketData.amount,
+            scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            scannedBy: adminData.email,
+            status: 'used'
+        });
+        
+        // Update payment tickets used count
+        const paymentRef = db.collection("payments").doc(ticketData.paymentId);
+        const paymentDoc = await paymentRef.get();
+        
+        if (paymentDoc.exists) {
+            const paymentData = paymentDoc.data();
+            const ticketsUsed = (paymentData.ticketsUsed || 0) + 1;
+            const ticketsRemaining = (paymentData.numberOfTickets || 1) - ticketsUsed;
+            
+            await paymentRef.update({
+                ticketsUsed: ticketsUsed,
+                ticketsRemaining: ticketsRemaining,
+                lastVerifiedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            // Update local data
+            const paymentIndex = window.allPayments.findIndex(p => p.id === ticketData.paymentId);
+            if (paymentIndex !== -1) {
+                window.allPayments[paymentIndex].ticketsUsed = ticketsUsed;
+                window.allPayments[paymentIndex].ticketsRemaining = ticketsRemaining;
+            }
         }
-    }, 3000);
+        
+        // Update local scanned tickets
+        await loadScannedTickets();
+        
+        showVerificationResult('success', 'Ticket verified successfully', ticketData);
+        
+    } catch (error) {
+        console.error('Error verifying individual ticket:', error);
+        showVerificationResult('error', 'Failed to verify ticket');
+    }
 }
 
-// Verify ticket for entry
+// Verify ticket for entry (legacy)
 async function verifyTicketForEntry(qrData, payment, ticketNumber, ticketType) {
     try {
         // Record verification
@@ -857,6 +1098,99 @@ async function verifyTicketForEntry(qrData, payment, ticketNumber, ticketType) {
     }
 }
 
+// Show verification result
+function showVerificationResult(type, message, verification = null, payment = null) {
+    const resultsDiv = document.getElementById('qrVerificationResult');
+    let html = '';
+    
+    if (type === 'success') {
+        const remaining = payment ? payment.ticketsRemaining - 1 : 0;
+        
+        html = `
+            <div class="alert alert-success">
+                <div class="d-flex align-items-center mb-3">
+                    <i class="bi bi-check-circle-fill fs-1 me-3"></i>
+                    <div>
+                        <h4 class="mb-0">Ticket Verified!</h4>
+                        <p class="mb-0">Entry granted</p>
+                    </div>
+                </div>
+                ${verification ? `
+                    <div class="mt-3">
+                        <p><strong>Customer:</strong> ${verification.customerName || 'Customer'}</p>
+                        <p><strong>Ticket:</strong> ${verification.ticketType} (Ticket ${verification.ticketNumber || '1'})</p>
+                        <p><strong>Time:</strong> ${new Date().toLocaleTimeString()}</p>
+                        <p><strong>Remaining:</strong> ${remaining} ticket(s) available</p>
+                        <p><strong>Transaction:</strong> ${verification.transactionCode}</p>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    } else if (type === 'used') {
+        html = `
+            <div class="alert alert-danger">
+                <div class="d-flex align-items-center mb-3">
+                    <i class="bi bi-x-circle-fill fs-1 me-3"></i>
+                    <div>
+                        <h4 class="mb-0">Ticket Already Used!</h4>
+                        <p class="mb-0">This ticket has been scanned before</p>
+                    </div>
+                </div>
+                ${verification ? `
+                    <div class="mt-3">
+                        <p><strong>First used at:</strong> ${new Date(verification.scannedAt?.toDate()).toLocaleString()}</p>
+                        <p><strong>Scanned by:</strong> ${verification.scannedBy}</p>
+                        <p><strong>Ticket:</strong> ${verification.ticketType} (Ticket ${verification.ticketNumber})</p>
+                        <p><strong>Transaction:</strong> ${verification.transactionCode}</p>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    } else if (type === 'expired') {
+        html = `
+            <div class="alert alert-danger">
+                <div class="d-flex align-items-center mb-3">
+                    <i class="bi bi-exclamation-triangle-fill fs-1 me-3"></i>
+                    <div>
+                        <h4 class="mb-0">Ticket Expired!</h4>
+                        <p class="mb-0">All tickets from this transaction have been used</p>
+                    </div>
+                </div>
+                ${payment ? `
+                    <div class="mt-3">
+                        <p><strong>Customer:</strong> ${payment.fullName || 'Customer'}</p>
+                        <p><strong>Total Tickets:</strong> ${payment.numberOfTickets || 1}</p>
+                        <p><strong>Tickets Used:</strong> ${payment.ticketsUsed || 0}</p>
+                        <p><strong>All tickets have been scanned</strong></p>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    } else {
+        html = `
+            <div class="alert alert-danger">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-exclamation-triangle-fill fs-1 me-3"></i>
+                    <div>
+                        <h4 class="mb-0">Verification Failed</h4>
+                        <p class="mb-0">${message}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    resultsDiv.innerHTML = html;
+    
+    // Auto-close after 3 seconds for success/used/expired
+    setTimeout(() => {
+        if (type === 'success' || type === 'used' || type === 'expired') {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('qrScannerModal'));
+            if (modal) modal.hide();
+        }
+    }, 3000);
+}
+
 // QR Scan error handler
 function onScanError(errorMessage) {
     // Ignore scan errors
@@ -869,7 +1203,7 @@ window.stopQrScanner = function() {
     }
 }
 
-// Generate comprehensive PDF export
+// Enhanced PDF export with detailed verified list and scanned attendees
 window.generateVerifiedPDF = async function() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -881,134 +1215,211 @@ window.generateVerifiedPDF = async function() {
         return;
     }
     
-    // Header
-    doc.setFontSize(20);
-    doc.setTextColor(102, 126, 234);
-    doc.text('KALENJIN VIBEZ - PAYMENT REPORT', 105, 15, { align: 'center' });
+    showLoading('Generating comprehensive PDF report...');
     
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 22, { align: 'center' });
-    doc.text(`Generated by: ${adminData.name || 'Admin'}`, 105, 27, { align: 'center' });
-    
-    let yPos = 35;
-    
-    // Summary Statistics
-    doc.setFontSize(14);
-    doc.setTextColor(0, 0, 0);
-    doc.text('SUMMARY STATISTICS', 14, yPos);
-    yPos += 8;
-    
-    doc.setFontSize(10);
-    const totalRevenue = verified.reduce((sum, p) => sum + p.amount, 0);
-    const totalTickets = verified.reduce((sum, p) => sum + (p.numberOfTickets || 1), 0);
-    const totalTicketsUsed = verified.reduce((sum, p) => sum + (p.ticketsUsed || 0), 0);
-    const totalTicketsRemaining = verified.reduce((sum, p) => sum + (p.ticketsRemaining || (p.numberOfTickets || 1)), 0);
-    
-    doc.text(`Total Revenue: KES ${totalRevenue.toLocaleString()}`, 14, yPos);
-    yPos += 6;
-    doc.text(`Total Verified Payments: ${verified.length}`, 14, yPos);
-    yPos += 6;
-    doc.text(`Total Tickets Sold: ${totalTickets}`, 14, yPos);
-    yPos += 6;
-    doc.text(`Tickets Used: ${totalTicketsUsed}`, 14, yPos);
-    yPos += 6;
-    doc.text(`Tickets Remaining: ${totalTicketsRemaining}`, 14, yPos);
-    yPos += 10;
-    
-    // Ticket Type Breakdown
-    doc.setFontSize(12);
-    doc.text('TICKET TYPE BREAKDOWN', 14, yPos);
-    yPos += 7;
-    doc.setFontSize(10);
-    
-    const ticketTypes = {};
-    verified.forEach(p => {
-        const type = p.ticketType;
-        const count = p.numberOfTickets || 1;
-        const used = p.ticketsUsed || 0;
-        if (!ticketTypes[type]) ticketTypes[type] = { total: 0, used: 0 };
-        ticketTypes[type].total += count;
-        ticketTypes[type].used += used;
-    });
-    
-    Object.keys(ticketTypes).forEach(type => {
-        const data = ticketTypes[type];
-        doc.text(`${type}: ${data.total} tickets (${data.used} used, ${data.total - data.used} remaining)`, 14, yPos);
+    try {
+        // Header
+        doc.setFontSize(20);
+        doc.setTextColor(102, 126, 234);
+        doc.text('KALENJIN VIBEZ - COMPREHENSIVE REPORT', 105, 15, { align: 'center' });
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 22, { align: 'center' });
+        doc.text(`Generated by: ${adminData.name || 'Admin'}`, 105, 27, { align: 'center' });
+        
+        let yPos = 35;
+        
+        // Summary Statistics
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.text('SUMMARY STATISTICS', 14, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(10);
+        const totalRevenue = verified.reduce((sum, p) => sum + p.amount, 0);
+        const totalTickets = verified.reduce((sum, p) => sum + (p.numberOfTickets || 1), 0);
+        const totalTicketsUsed = verified.reduce((sum, p) => sum + (p.ticketsUsed || 0), 0);
+        const totalTicketsRemaining = verified.reduce((sum, p) => sum + (p.ticketsRemaining || (p.numberOfTickets || 1)), 0);
+        
+        doc.text(`Total Revenue: KES ${totalRevenue.toLocaleString()}`, 14, yPos);
         yPos += 6;
-    });
-    
-    yPos += 5;
-    
-    // Detailed Payment List
-    doc.addPage();
-    yPos = 20;
-    doc.setFontSize(14);
-    doc.text('DETAILED PAYMENT LIST', 14, yPos);
-    yPos += 10;
-    
-    const tableData = verified.map(p => [
-        p.fullName || 'N/A',
-        p.phoneNumber || 'N/A',
-        p.ticketType,
-        p.numberOfTickets || 1,
-        p.ticketsUsed || 0,
-        p.ticketsRemaining || (p.numberOfTickets || 1),
-        `KES ${p.amount.toLocaleString()}`,
-        new Date(p.date).toLocaleDateString(),
-        (p.transactionReference || 'N/A').substring(0, 12)
-    ]);
-    
-    doc.autoTable({
-        startY: yPos,
-        head: [['Name', 'Phone', 'Ticket Type', 'Qty', 'Used', 'Remaining', 'Amount', 'Date', 'Trans. Code']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [102, 126, 234], textColor: 255 },
-        styles: { fontSize: 7, cellPadding: 2 },
-        columnStyles: {
-            0: { cellWidth: 25 },
-            1: { cellWidth: 22 },
-            2: { cellWidth: 28 },
-            3: { cellWidth: 12 },
-            4: { cellWidth: 12 },
-            5: { cellWidth: 15 },
-            6: { cellWidth: 22 },
-            7: { cellWidth: 20 },
-            8: { cellWidth: 25 }
+        doc.text(`Total Verified Payments: ${verified.length}`, 14, yPos);
+        yPos += 6;
+        doc.text(`Total Tickets Sold: ${totalTickets}`, 14, yPos);
+        yPos += 6;
+        doc.text(`Tickets Used: ${totalTicketsUsed}`, 14, yPos);
+        yPos += 6;
+        doc.text(`Tickets Remaining: ${totalTicketsRemaining}`, 14, yPos);
+        yPos += 10;
+        
+        // Ticket Type Breakdown
+        doc.setFontSize(12);
+        doc.text('TICKET TYPE BREAKDOWN', 14, yPos);
+        yPos += 7;
+        doc.setFontSize(10);
+        
+        const ticketTypes = {};
+        verified.forEach(p => {
+            const type = p.ticketType;
+            const count = p.numberOfTickets || 1;
+            const used = p.ticketsUsed || 0;
+            if (!ticketTypes[type]) ticketTypes[type] = { total: 0, used: 0 };
+            ticketTypes[type].total += count;
+            ticketTypes[type].used += used;
+        });
+        
+        Object.keys(ticketTypes).forEach(type => {
+            const data = ticketTypes[type];
+            doc.text(`${type}: ${data.total} tickets (${data.used} used, ${data.total - data.used} remaining)`, 14, yPos);
+            yPos += 6;
+        });
+        
+        yPos += 5;
+        
+        // DETAILED VERIFIED PEOPLE LIST
+        doc.addPage();
+        yPos = 20;
+        doc.setFontSize(16);
+        doc.setTextColor(102, 126, 234);
+        doc.text('DETAILED VERIFIED PEOPLE LIST', 105, yPos, { align: 'center' });
+        yPos += 10;
+        
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        
+        const detailedTableData = verified.map(p => [
+            p.fullName || 'N/A',
+            p.phoneNumber || 'N/A',
+            p.email || 'N/A',
+            p.ticketType,
+            p.numberOfTickets || 1,
+            p.ticketsUsed || 0,
+            p.ticketsRemaining || (p.numberOfTickets || 1),
+            `KES ${p.amount.toLocaleString()}`,
+            new Date(p.date).toLocaleDateString(),
+            (p.transactionReference || 'N/A')
+        ]);
+        
+        doc.autoTable({
+            startY: yPos,
+            head: [['Name', 'Phone', 'Email', 'Ticket Type', 'Total', 'Used', 'Remaining', 'Amount', 'Date', 'Transaction Code']],
+            body: detailedTableData,
+            theme: 'grid',
+            headStyles: { fillColor: [102, 126, 234], textColor: 255 },
+            styles: { fontSize: 7, cellPadding: 2 },
+            columnStyles: {
+                0: { cellWidth: 25 },
+                1: { cellWidth: 22 },
+                2: { cellWidth: 30 },
+                3: { cellWidth: 28 },
+                4: { cellWidth: 12 },
+                5: { cellWidth: 12 },
+                6: { cellWidth: 15 },
+                7: { cellWidth: 22 },
+                8: { cellWidth: 20 },
+                9: { cellWidth: 30 }
+            }
+        });
+        
+        // SCANNED ATTENDEES PAGE
+        doc.addPage();
+        yPos = 20;
+        doc.setFontSize(16);
+        doc.setTextColor(102, 126, 234);
+        doc.text('SCANNED ATTENDEES', 105, yPos, { align: 'center' });
+        yPos += 10;
+        
+        const scannedQuery = await db.collection("verifications")
+            .orderBy("scannedAt", "desc")
+            .get();
+        
+        const scannedData = [];
+        scannedQuery.forEach((doc) => {
+            const data = doc.data();
+            scannedData.push([
+                data.customerName || 'Guest',
+                `${data.ticketType} #${data.ticketNumber}`,
+                data.scannedAt?.toDate().toLocaleString() || 'N/A',
+                data.scannedBy,
+                data.transactionCode?.substring(0, 15) || 'N/A'
+            ]);
+        });
+        
+        if (scannedData.length > 0) {
+            doc.autoTable({
+                startY: yPos,
+                head: [['Customer', 'Ticket', 'Scanned At', 'Scanned By', 'Transaction Code']],
+                body: scannedData,
+                theme: 'striped',
+                headStyles: { fillColor: [220, 53, 69], textColor: 255 },
+                styles: { fontSize: 8 }
+            });
+        } else {
+            doc.text('No scanned attendees yet', 14, yPos);
         }
-    });
-    
-    // Add summary page
-    doc.addPage();
-    yPos = 20;
-    doc.setFontSize(16);
-    doc.setTextColor(102, 126, 234);
-    doc.text('PAYMENT SUMMARY', 105, yPos, { align: 'center' });
-    
-    yPos += 15;
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Total Revenue Collected: KES ${totalRevenue.toLocaleString()}`, 14, yPos);
-    yPos += 8;
-    doc.text(`Total Tickets Verified: ${totalTickets}`, 14, yPos);
-    yPos += 8;
-    doc.text(`Total Tickets Used at Event: ${totalTicketsUsed}`, 14, yPos);
-    yPos += 8;
-    doc.text(`Total Tickets Remaining: ${totalTicketsRemaining}`, 14, yPos);
-    yPos += 8;
-    doc.text(`Report Period: Up to ${new Date().toLocaleDateString()}`, 14, yPos);
-    yPos += 15;
-    
-    // Signature line
-    doc.line(14, yPos, 80, yPos);
-    doc.text('Authorized Signature', 14, yPos + 5);
-    doc.line(120, yPos, 186, yPos);
-    doc.text('Date', 120, yPos + 5);
-    
-    doc.save(`Kalenjin-Payments-Report-${new Date().toISOString().split('T')[0]}.pdf`);
-    showSuccess('PDF report generated successfully!');
-    closeQuickActions();
+        
+        // TICKETS STATUS PAGE
+        doc.addPage();
+        yPos = 20;
+        doc.setFontSize(16);
+        doc.setTextColor(102, 126, 234);
+        doc.text('INDIVIDUAL TICKETS STATUS', 105, yPos, { align: 'center' });
+        yPos += 10;
+        
+        const ticketsQuery = await db.collection("tickets")
+            .orderBy("createdAt", "desc")
+            .limit(100)
+            .get();
+        
+        const ticketsData = [];
+        ticketsQuery.forEach((doc) => {
+            const data = doc.data();
+            ticketsData.push([
+                data.customerName || 'Guest',
+                `${data.ticketType} #${data.ticketNumber}`,
+                data.status || 'active',
+                data.scannedAt?.toDate().toLocaleString() || 'Not scanned',
+                data.transactionCode?.substring(0, 12) || 'N/A'
+            ]);
+        });
+        
+        if (ticketsData.length > 0) {
+            doc.autoTable({
+                startY: yPos,
+                head: [['Customer', 'Ticket', 'Status', 'Scanned At', 'Transaction']],
+                body: ticketsData,
+                theme: 'grid',
+                headStyles: { fillColor: [40, 167, 69], textColor: 255 },
+                styles: { fontSize: 8 }
+            });
+        }
+        
+        // Add summary page
+        const lastPage = doc.internal.getNumberOfPages();
+        doc.setPage(lastPage);
+        
+        yPos = doc.internal.pageSize.height - 40;
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Report generated: ${new Date().toLocaleString()}`, 14, yPos);
+        yPos += 6;
+        doc.text(`Total verified customers: ${verified.length}`, 14, yPos);
+        yPos += 6;
+        doc.text(`Total revenue collected: KES ${totalRevenue.toLocaleString()}`, 14, yPos);
+        yPos += 6;
+        doc.text(`Total tickets: ${totalTickets} (Used: ${totalTicketsUsed}, Remaining: ${totalTicketsRemaining})`, 14, yPos);
+        
+        doc.save(`Kalenjin-Complete-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+        showSuccess('Comprehensive PDF report generated successfully!');
+        
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('Failed to generate PDF: ' + error.message);
+    } finally {
+        hideLoading();
+        closeQuickActions();
+    }
 }
 
 // Filter payments
@@ -1100,6 +1511,118 @@ window.verifyFromMessage = function() {
     }
 }
 
+// Show pending modal
+window.showPendingModal = function() {
+    const pendingPayments = window.allPayments.filter(p => p.status === 'pending');
+    const modalContent = document.getElementById('pendingModalContent');
+    
+    if (pendingPayments.length === 0) {
+        modalContent.innerHTML = '<div class="text-center p-5"><p class="text-light">No pending payments</p></div>';
+    } else {
+        let html = '<div class="row">';
+        pendingPayments.forEach(payment => {
+            const ticketTypeClass = window.getTicketTypeClass(payment.ticketType);
+            const ticketsCount = payment.numberOfTickets || 1;
+            
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="glass-card p-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="text-white">${payment.fullName || 'Customer'}</h6>
+                                <small class="text-light">${payment.phoneNumber || 'N/A'}</small>
+                                <div class="mt-2">
+                                    <span class="ticket-type-badge ${ticketTypeClass}">${payment.ticketType}</span>
+                                    <span class="badge bg-info ms-2">×${ticketsCount}</span>
+                                </div>
+                                <p class="text-success mb-0 mt-2">KES ${payment.amount.toLocaleString()}</p>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-success" onclick="verifyPayment('${payment.id}')">
+                                    <i class="bi bi-check"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger mt-1" onclick="rejectPayment('${payment.id}')">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        modalContent.innerHTML = html;
+    }
+    
+    new bootstrap.Modal(document.getElementById('pendingModal')).show();
+};
+
+// Show scanned attendees
+window.showScannedAttendees = async function() {
+    try {
+        showLoading('Loading scanned attendees...');
+        
+        const scannedQuery = await db.collection("verifications")
+            .orderBy("scannedAt", "desc")
+            .get();
+        
+        let html = '<div class="table-responsive">';
+        html += `
+            <table class="table table-dark table-hover">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Ticket</th>
+                        <th>Scanned At</th>
+                        <th>Scanned By</th>
+                        <th>Transaction</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        if (scannedQuery.empty) {
+            html += `
+                <tr>
+                    <td colspan="6" class="text-center py-5">
+                        <p class="text-light">No scanned attendees yet</p>
+                    </td>
+                </tr>
+            `;
+        } else {
+            scannedQuery.forEach((doc) => {
+                const data = doc.data();
+                const scannedTime = data.scannedAt?.toDate() || new Date();
+                
+                html += `
+                    <tr>
+                        <td>${data.customerName || 'Guest'}</td>
+                        <td>${data.ticketType} #${data.ticketNumber}</td>
+                        <td>${scannedTime.toLocaleString()}</td>
+                        <td>${data.scannedBy}</td>
+                        <td><small>${data.transactionCode?.substring(0, 12)}...</small></td>
+                        <td><span class="badge bg-success">Used</span></td>
+                    </tr>
+                `;
+            });
+        }
+        
+        html += `
+                </tbody>
+            </table>
+        </div>`;
+        
+        document.getElementById('scannedAttendeesContent').innerHTML = html;
+        hideLoading();
+        new bootstrap.Modal(document.getElementById('scannedAttendeesModal')).show();
+    } catch (error) {
+        console.error('Error loading scanned attendees:', error);
+        hideLoading();
+        alert('Failed to load scanned attendees: ' + error.message);
+    }
+};
+
 // Toggle quick actions menu
 window.toggleQuickActions = function() {
     const menu = document.getElementById('quickActionsMenu');
@@ -1144,6 +1667,7 @@ window.refreshData = async function() {
     document.getElementById('loadingOverlay').style.display = 'flex';
     await loadPaymentsFromFirestore();
     await loadVerificationRecords();
+    await loadScannedTickets();
     document.getElementById('loadingOverlay').style.display = 'none';
     showSuccess('Data refreshed successfully!');
 }
@@ -1193,4 +1717,4 @@ function setupEventListeners() {
     });
 }
 
-console.log('✅ Admin Dashboard Loaded Successfully')
+console.log('✅ Admin Dashboard Loaded Successfully');

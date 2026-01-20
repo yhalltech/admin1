@@ -485,7 +485,7 @@ h1, h2, h3, h4, h5, h6,
     <div class="sidebar" id="sidebar">
         <div class="px-3 py-4">
             <h3 class="mb-4 gradient-text">
-                <i class="bi bi-shield-check me-2"></i> Kalenjin Admin
+                <i class="bi bi-shield-check me-2"></i>Admin-Panel
             </h3>
             
             <div class="glass-card p-3 mb-4">
@@ -520,6 +520,11 @@ h1, h2, h3, h4, h5, h6,
                     <a class="nav-link text-white" href="javascript:void(0)" onclick="refreshData()">
                         <i class="bi bi-arrow-clockwise me-2"></i> Refresh Data
                     </a>
+                </li>
+                <li class="nav-item">
+                      <a class="nav-link text-white" href="javascript:void(0)" onclick="showScannedAttendees()">
+                                   <i class="bi bi-people me-2"></i> Scanned Attendees
+                      </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link text-danger" href="javascript:void(0)" onclick="logout()">
@@ -952,6 +957,30 @@ h1, h2, h3, h4, h5, h6,
                 </div>
                 <div id="qr-reader"></div>
                 <div id="qrVerificationResult" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Scanned Attendees Modal -->
+<div class="modal fade" id="scannedAttendeesModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-people-fill me-2"></i> Scanned Attendees</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="scannedAttendeesContent">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-3 text-light">Loading scanned attendees...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button class="btn btn-primary" onclick="generateVerifiedPDF()">
+                    <i class="bi bi-file-pdf me-2"></i>Export to PDF
+                </button>
             </div>
         </div>
     </div>
